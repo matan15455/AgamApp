@@ -54,9 +54,9 @@ export default function ScheduleScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 54, paddingBottom: 100 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 }}>
+        <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 }}>
           <Text style={{ fontSize: 26, fontWeight: '700', color: COLORS.text }}>מערכת שעות</Text>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
+          <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
             <TouchableOpacity onPress={() => setHoursModal(true)} style={styles.smallBtn}>
               <Text style={{ color: '#5F5870', fontSize: 12.5, fontWeight: '500' }}>שעות</Text>
             </TouchableOpacity>
@@ -77,23 +77,25 @@ export default function ScheduleScreen() {
 
         {view === 'week' && (
           <View style={styles.gridCard}>
-            <View style={{ flexDirection: 'row', gap: 5, marginBottom: 7, paddingRight: 46 }}>
+            <View style={{ flexDirection: 'row-reverse', gap: 5, marginBottom: 7, paddingRight: 48 }}>
               {DAYS_SHORT.map((d, i) => (
                 <Text key={i} style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', color: i === todayIndex() ? COLORS.purple : COLORS.textDim }}>{d}</Text>
               ))}
             </View>
             {hours.map((h, slot) => (
-              <View key={slot} style={{ flexDirection: 'row', gap: 5, marginBottom: 5 }}>
-                <View style={{ width: 42, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.purple }}>{slot + 1}</Text>
-                  <Text style={{ fontSize: 8.5, color: '#6E6580' }}>{h.startTime}</Text>
+              <View key={slot} style={{ flexDirection: 'row-reverse', gap: 5, marginBottom: 5 }}>
+                <View style={{ width: 44, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.purple }}>{slot + 1}</Text>
+                  <Text style={{ fontSize: 8, color: '#6E6580', marginTop: 1 }}>{h.startTime}</Text>
+                  <Text style={{ fontSize: 8, color: COLORS.textFaint }}>{h.endTime}</Text>
                 </View>
                 {DAYS.map((_, d) => {
                   const l = cellAt(d, slot);
                   return (
                     <TouchableOpacity key={d} onPress={() => openSlot(d, slot)}
                       style={[styles.cell, { backgroundColor: l ? l.color + '1E' : '#FAF9FC' }]}>
-                      <Text numberOfLines={1} style={{ fontSize: 10.5, fontWeight: '600', color: l ? l.color : '#D6CFE0' }}>{l ? l.name.slice(0, 5) : ''}</Text>
+                      <Text numberOfLines={1} style={{ fontSize: 10.5, fontWeight: '700', color: l ? l.color : '#D6CFE0' }}>{l ? (l.short || l.name).slice(0, 6) : ''}</Text>
+                      {l && <Text numberOfLines={1} style={{ fontSize: 8, color: l.color, opacity: 0.75, marginTop: 1 }}>{l.room}</Text>}
                     </TouchableOpacity>
                   );
                 })}
@@ -104,7 +106,7 @@ export default function ScheduleScreen() {
 
         {view === 'day' && (
           <>
-            <View style={{ flexDirection: 'row', gap: 6, marginTop: 14, marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row-reverse', gap: 6, marginTop: 14, marginBottom: 12 }}>
               {DAYS_SHORT.map((d, i) => (
                 <TouchableOpacity key={i} onPress={() => setDay(i)}
                   style={[styles.dayPickBtn, day === i && { backgroundColor: COLORS.purple }]}>
@@ -113,7 +115,7 @@ export default function ScheduleScreen() {
               ))}
             </View>
             {dayLessons.map(l => (
-              <TouchableOpacity key={l.slot} onPress={() => openSlot(l.day, l.slot)} style={styles.lessonRow}>
+              <TouchableOpacity key={l.slot} onPress={() => openSlot(l.day, l.slot)} style={[styles.lessonRow, { flexDirection: 'row-reverse' }]}>
                 <View style={{ width: 48, alignItems: 'center' }}>
                   <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text }}>{l.startTime}</Text>
                   <Text style={{ fontSize: 10.5, color: COLORS.textFaint }}>{l.endTime}</Text>
@@ -138,13 +140,13 @@ export default function ScheduleScreen() {
           <View style={styles.sheet}>
             {slotModal && (
               <>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
                   <TouchableOpacity onPress={() => setSlotModal(null)}><Text style={{ color: '#8B839A' }}>ביטול</Text></TouchableOpacity>
                   <Text style={{ fontWeight: '700', fontSize: 16 }}>יום {DAYS[slotModal.day]} · שיעור {slotModal.slot + 1}</Text>
                   <TouchableOpacity onPress={saveSlot}><Text style={{ color: COLORS.purple, fontWeight: '700' }}>שמירה</Text></TouchableOpacity>
                 </View>
                 <Text style={styles.label}>מקצוע</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 7 }}>
                   {subjects.map(s => (
                     <TouchableOpacity key={s.id} onPress={() => setSlotModal(m => ({ ...m, subjectId: s.id }))}
                       style={[styles.subjChip, { borderColor: slotModal.subjectId === s.id ? s.color : '#EDE9F3', backgroundColor: slotModal.subjectId === s.id ? s.color + '22' : '#fff' }]}>
@@ -172,7 +174,7 @@ export default function ScheduleScreen() {
       <Modal visible={hoursModal} animationType="slide" transparent onRequestClose={() => setHoursModal(false)}>
         <View style={styles.overlay}>
           <View style={styles.sheet}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
               <TouchableOpacity onPress={async () => { await resetHours(); await load(); }}>
                 <Text style={{ color: '#8B839A' }}>ברירת מחדל</Text>
               </TouchableOpacity>
@@ -201,7 +203,7 @@ function shiftTime(t, delta) {
 
 function HourRow({ n, from, to, onChange }) {
   return (
-    <View style={styles.hourRow}>
+    <View style={[styles.hourRow, { flexDirection: 'row-reverse' }]}>
       <View style={{ width: 56 }}><Text style={{ fontWeight: '600', fontSize: 13.5 }}>שיעור {n}</Text></View>
       <View style={styles.stepper}>
         <TouchableOpacity onPress={() => onChange(shiftTime(from, -5), to)} style={styles.stepBtn}><Text>−</Text></TouchableOpacity>
@@ -222,14 +224,14 @@ const styles = StyleSheet.create({
   viewToggle: { flexDirection: 'row', backgroundColor: '#EDE7F5', borderRadius: 99, padding: 3, marginTop: 14, marginHorizontal: 6 },
   viewBtn: { flex: 1, borderRadius: 99, paddingVertical: 11, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
   gridCard: { marginTop: 14, backgroundColor: COLORS.card, borderRadius: 22, padding: 10 },
-  cell: { flex: 1, height: 46, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  cell: { flex: 1, height: 50, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingVertical: 2 },
   dayPickBtn: { flex: 1, borderRadius: 14, paddingVertical: 11, alignItems: 'center', backgroundColor: '#fff', minHeight: 44, justifyContent: 'center' },
   lessonRow: { flexDirection: 'row', gap: 12, backgroundColor: COLORS.card, borderRadius: 18, padding: 13, marginBottom: 8, alignItems: 'stretch' },
   overlay: { flex: 1, backgroundColor: 'rgba(35,27,45,0.34)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#FBF9FD', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, maxHeight: '90%' },
   label: { fontSize: 12.5, fontWeight: '600', color: COLORS.textDim, marginTop: 18, marginBottom: 8 },
   subjChip: { borderWidth: 1.5, borderRadius: 99, paddingVertical: 10, paddingHorizontal: 14, minHeight: 44, justifyContent: 'center' },
-  remindRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', borderRadius: 18, padding: 14, marginTop: 18 },
+  remindRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', borderRadius: 18, padding: 14, marginTop: 18 },
   dangerBtn: { marginTop: 12, backgroundColor: COLORS.redTint, borderRadius: 16, padding: 13, alignItems: 'center' },
   hourRow: { flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: '#fff', borderRadius: 16, padding: 10, marginBottom: 8 },
   stepper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7F5FB', borderRadius: 12, padding: 4, gap: 5, minHeight: 44 },

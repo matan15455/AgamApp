@@ -72,14 +72,14 @@ export default function TodayScreen() {
         )}
       </View>
 
-      <View style={styles.timerCard}>
+      <View style={[styles.timerCard, { flexDirection: 'row-reverse' }]}>
         <View style={styles.timerCircle}>
           <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>{mm}:{ss}</Text>
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.text }}>טיימר לימודים</Text>
           <Text style={{ fontSize: 12.5, color: COLORS.textDim, marginTop: 2 }}>25 דקות ריכוז, אחר כך הפסקה</Text>
-          <View style={{ flexDirection: 'row', gap: 7, marginTop: 10 }}>
+          <View style={{ flexDirection: 'row-reverse', gap: 7, marginTop: 10 }}>
             <TouchableOpacity onPress={toggleTimer} style={styles.timerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={{ color: '#fff', fontSize: 13.5, fontWeight: '600' }}>{running ? 'עצירה' : 'התחלה'}</Text>
             </TouchableOpacity>
@@ -95,7 +95,7 @@ export default function TodayScreen() {
         const now = toMin(l.startTime) <= NOW_MIN && toMin(l.endTime) > NOW_MIN;
         const past = toMin(l.endTime) <= NOW_MIN;
         return (
-          <View key={l.slot} style={[styles.lessonRow, past && { opacity: 0.55 }]}>
+          <View key={l.slot} style={[styles.lessonRow, past && { opacity: 0.55 }, { flexDirection: 'row-reverse' }]}>
             <View style={{ width: 48, alignItems: 'center' }}>
               <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text }}>{l.startTime}</Text>
               <Text style={{ fontSize: 10.5, color: COLORS.textFaint }}>{l.endTime}</Text>

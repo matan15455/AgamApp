@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, I18nManager } from 'react-native';
+import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet } from 'react-native';
 import { initDB } from './database';
-
-if (!I18nManager.isRTL) {
-  I18nManager.allowRTL(true);
-  I18nManager.forceRTL(true);
-}
 import { requestPermissions } from './notifications';
 import TasksScreen from './screens/TasksScreen';
 import ScheduleScreen from './screens/ScheduleScreen';
@@ -64,6 +59,6 @@ export default function App() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { flexDirection: 'row', paddingTop: 13, paddingBottom: 28, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: COLORS.border },
+  tabBar: { flexDirection: 'row-reverse', paddingTop: 13, paddingBottom: 28, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: COLORS.border },
   tabItem: { flex: 1, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
 });

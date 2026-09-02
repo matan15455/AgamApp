@@ -1,17 +1,35 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal, Platform, KeyboardAvoidingView, TouchableWithoutFeedback } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLORS } from '../theme';
 import { dueInfo, isoDate, addDays } from '../theme';
 import { getTasks, getSubjects, addTask, updateTask, toggleTask, deleteTask, setTaskNotifId } from '../database';
 import { scheduleTaskReminder, cancelReminder } from '../notifications';
 
 const TYPES = ['שיעורי בית', 'מבחן', 'עבודה', 'תזכורת'];
-const REMIND_OPTIONS = [
-  { key: 'none', label: 'בלי תזכורת' },
-  { key: 'due_morning', label: 'בבוקר של היום' },
-  { key: 'due_1h', label: 'שעה לפני 18:00' },
-  { key: 'day_before', label: 'יום לפני, 18:00' },
-];
+
+function timeToDate(t) {
+  const [h, m] = (t || '18:00').split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+function dateToTime(d) {
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function remindOptions(dueTime) {
+  const [h, m] = (dueTime || '18:00').split(':').map(Number);
+  const before = new Date(2000, 0, 1, h, m);
+  before.setHours(before.getHours() - 1);
+  const hb = String(before.getHours()).padStart(2, '0') + ':' + String(before.getMinutes()).padStart(2, '0');
+  return [
+    { key: 'none', label: 'בלי תזכורת' },
+    { key: 'at_due', label: 'בשעת ההגשה · ' + dueTime },
+    { key: 'due_1h', label: 'שעה לפני ההגשה · ' + hb },
+    { key: 'due_morning', label: 'בבוקר של אותו יום · 07:15' },
+    { key: 'day_before', label: 'יום לפני, באותה שעה · ' + dueTime },
+  ];
+}
 
 export default function TasksScreen() {
   const [tasks, setTasks] = useState([]);
@@ -20,9 +38,10 @@ export default function TasksScreen() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [draft, setDraft] = useState(blankDraft());
+  const [picker, setPicker] = useState(null); // 'date' | 'time' | null
 
   function blankDraft() {
-    return { title: '', subjectId: 'math', type: 'שיעורי בית', dueDate: isoDate(new Date()), remindKind: 'day_before' };
+    return { title: '', subjectId: 'math', type: 'שיעורי בית', dueDate: isoDate(new Date()), dueTime: '18:00', remindKind: 'day_before' };
   }
 
   const load = useCallback(async () => {
@@ -80,7 +99,7 @@ export default function TasksScreen() {
 
   function openEdit(task) {
     setEditId(task.id);
-    setDraft({ title: task.title, subjectId: task.subjectId, type: task.type, dueDate: task.dueDate, remindKind: task.remindKind || 'none' });
+    setDraft({ title: task.title, subjectId: task.subjectId, type: task.type, dueDate: task.dueDate, dueTime: task.dueTime || '18:00', remindKind: task.remindKind || 'none' });
     setModalOpen(true);
   }
 
@@ -89,6 +108,9 @@ export default function TasksScreen() {
     setDraft(blankDraft());
     setModalOpen(true);
   }
+
+  const REMIND = remindOptions(draft.dueTime);
+  const draftDue = dueInfo(draft.dueDate);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
@@ -99,7 +121,7 @@ export default function TasksScreen() {
         <Text style={styles.pageTitle}>המשימות שלי</Text>
 
         <View style={styles.progressCard}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
             <Text style={{ fontSize: 14.5, fontWeight: '500', color: COLORS.text, textAlign: 'right' }}>
               {openCount === 0 ? 'סיימת הכול, כל הכבוד!' : openCount + ' משימות פתוחות'}
             </Text>
@@ -110,7 +132,7 @@ export default function TasksScreen() {
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8, marginVertical: 16, flexWrap: 'wrap' }}>
+        <View style={{ flexDirection: 'row-reverse', gap: 8, marginVertical: 16, flexWrap: 'wrap' }}>
           {[{ k: 'all', l: 'הכול' }, { k: 'today', l: 'להיום' }, { k: 'week', l: 'השבוע' }, { k: 'done', l: 'בוצעו' }].map(f => (
             <TouchableOpacity key={f.k} onPress={() => setFilter(f.k)}
               style={[styles.chip, filter === f.k && { backgroundColor: COLORS.text }]}>
@@ -121,7 +143,7 @@ export default function TasksScreen() {
 
         {groups.map(g => (
           <View key={g.key} style={{ marginBottom: 20 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 9 }}>
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 9 }}>
               <Text style={{ fontSize: 14.5, fontWeight: '600', color: g.key === 'late' ? COLORS.red : COLORS.text }}>{g.label}</Text>
               <Text style={{ fontSize: 13, color: COLORS.textFaint }}>{g.items.length}</Text>
             </View>
@@ -138,12 +160,12 @@ export default function TasksScreen() {
                     <Text style={{ fontSize: 16, fontWeight: '500', color: t.done ? '#A79FB4' : COLORS.text, textDecorationLine: t.done ? 'line-through' : 'none', textAlign: 'right' }}>
                       {t.title}
                     </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+                    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
                       <View style={[styles.subjTag, { backgroundColor: s.color ? s.color + '22' : '#eee' }]}>
                         <Text style={{ fontSize: 12, fontWeight: '500', color: s.color || '#888' }}>{s.name}</Text>
                       </View>
                       <Text style={{ fontSize: 12.5, color: di.overdue ? COLORS.red : COLORS.textDim }}>
-                        {di.overdue ? 'עבר · אתמול' : di.isToday ? 'היום' : di.isTomorrow ? 'מחר' : 'יום ' + di.dayName}
+                        {di.overdue ? 'עבר · אתמול' : di.isToday ? 'היום, ' + (t.dueTime || '18:00') : di.isTomorrow ? 'מחר, ' + (t.dueTime || '18:00') : 'יום ' + di.dayName}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -179,7 +201,7 @@ export default function TasksScreen() {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ justifyContent: 'flex-end' }} pointerEvents="box-none">
             <View style={styles.sheet}>
               <View style={styles.sheetHandle} />
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' }}>
                 <TouchableOpacity onPress={() => setModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Text style={{ color: '#8B839A', fontSize: 15 }}>ביטול</Text>
                 </TouchableOpacity>
@@ -198,7 +220,7 @@ export default function TasksScreen() {
                 />
 
                 <Text style={styles.label}>מקצוע</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
                   {subjects.map(s => (
                     <TouchableOpacity key={s.id} onPress={() => setDraft(d => ({ ...d, subjectId: s.id }))}
                       style={[styles.subjChip, { borderColor: draft.subjectId === s.id ? s.color : '#EDE9F3', backgroundColor: draft.subjectId === s.id ? s.color + '22' : '#fff' }]}>
@@ -208,7 +230,7 @@ export default function TasksScreen() {
                 </View>
 
                 <Text style={styles.label}>סוג</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
                   {TYPES.map(t => (
                     <TouchableOpacity key={t} onPress={() => setDraft(d => ({ ...d, type: t }))}
                       style={[styles.typeChip, draft.type === t && { backgroundColor: COLORS.text }]}>
@@ -218,8 +240,8 @@ export default function TasksScreen() {
                 </View>
 
                 <Text style={styles.label}>תאריך הגשה</Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {[0, 1, 3, 7].map(off => {
+                <View style={{ flexDirection: 'row-reverse', gap: 8, flexWrap: 'wrap' }}>
+                  {[0, 1, 3].map(off => {
                     const d = addDays(new Date(), off);
                     const iso = isoDate(d);
                     const active = draft.dueDate === iso;
@@ -232,11 +254,22 @@ export default function TasksScreen() {
                       </TouchableOpacity>
                     );
                   })}
+                  <TouchableOpacity onPress={() => setPicker('date')} style={[styles.dueChip, { backgroundColor: COLORS.purpleTint, flexDirection: 'row', gap: 5, alignItems: 'center' }]}>
+                    <Text style={{ fontSize: 13.5, color: COLORS.purple, fontWeight: '600' }}>לוח שנה</Text>
+                  </TouchableOpacity>
                 </View>
+                <Text style={{ fontSize: 13, color: COLORS.textDim, marginTop: 8, textAlign: 'right' }}>
+                  נבחר: יום {draftDue.dayName}, {draftDue.dateLabel}
+                </Text>
+
+                <Text style={styles.label}>שעת הגשה</Text>
+                <TouchableOpacity onPress={() => setPicker('time')} style={[styles.dueChip, { alignSelf: 'flex-end', paddingHorizontal: 22 }]}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.text }}>{draft.dueTime}</Text>
+                </TouchableOpacity>
 
                 <Text style={styles.label}>תזכורת</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-                  {REMIND_OPTIONS.map(r => (
+                <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                  {REMIND.map(r => (
                     <TouchableOpacity key={r.key} onPress={() => setDraft(d => ({ ...d, remindKind: r.key }))}
                       style={[styles.remindChip, draft.remindKind === r.key && { backgroundColor: COLORS.purple }]}>
                       <Text style={{ fontSize: 13.5, color: draft.remindKind === r.key ? '#fff' : '#6E6580' }}>{r.label}</Text>
@@ -244,6 +277,40 @@ export default function TasksScreen() {
                   ))}
                 </View>
               </ScrollView>
+
+              {picker === 'date' && (
+                <DateTimePicker
+                  value={new Date(draft.dueDate + 'T12:00:00')}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  minimumDate={new Date(new Date().setHours(0, 0, 0, 0))}
+                  onChange={(event, selected) => {
+                    if (Platform.OS === 'android') setPicker(null);
+                    if (event.type === 'dismissed') { setPicker(null); return; }
+                    if (selected) setDraft(d => ({ ...d, dueDate: isoDate(selected) }));
+                    if (Platform.OS === 'ios' && event.type === 'set') setPicker(null);
+                  }}
+                />
+              )}
+              {picker === 'time' && (
+                <DateTimePicker
+                  value={timeToDate(draft.dueTime)}
+                  mode="time"
+                  is24Hour
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(event, selected) => {
+                    if (Platform.OS === 'android') setPicker(null);
+                    if (event.type === 'dismissed') { setPicker(null); return; }
+                    if (selected) setDraft(d => ({ ...d, dueTime: dateToTime(selected) }));
+                    if (Platform.OS === 'ios' && event.type === 'set') setPicker(null);
+                  }}
+                />
+              )}
+              {picker && Platform.OS === 'ios' && (
+                <TouchableOpacity onPress={() => setPicker(null)} style={{ alignSelf: 'center', marginTop: 8, marginBottom: 4 }}>
+                  <Text style={{ color: COLORS.purple, fontWeight: '700' }}>אישור</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </KeyboardAvoidingView>
         </View>
@@ -259,18 +326,18 @@ const styles = StyleSheet.create({
   progressTrack: { marginTop: 11, height: 9, borderRadius: 99, backgroundColor: '#F0EBF7', overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 99, backgroundColor: COLORS.purple },
   chip: { borderRadius: 99, paddingVertical: 11, paddingHorizontal: 16, backgroundColor: '#fff', minHeight: 44, justifyContent: 'center' },
-  taskRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: COLORS.card, borderRadius: 18, padding: 14, marginBottom: 9 },
+  taskRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, backgroundColor: COLORS.card, borderRadius: 18, padding: 14, marginBottom: 9 },
   checkbox: { width: 30, height: 30, borderRadius: 99, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   subjTag: { borderRadius: 99, paddingVertical: 4, paddingHorizontal: 9 },
   empty: { marginTop: 30, alignItems: 'center', padding: 34, borderWidth: 1, borderColor: '#DDD5E8', borderStyle: 'dashed', borderRadius: 22 },
   fab: { position: 'absolute', left: 20, bottom: 24, width: 60, height: 60, borderRadius: 99, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8 },
   modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(35,27,45,0.4)' },
-  sheet: { backgroundColor: '#FBF9FD', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, maxHeight: '88%' },
+  sheet: { backgroundColor: '#FBF9FD', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, maxHeight: '90%' },
   sheetHandle: { width: 38, height: 4, borderRadius: 99, backgroundColor: '#DDD6E6', alignSelf: 'center', marginBottom: 12 },
   input: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginTop: 16, fontSize: 17, textAlign: 'right', minHeight: 52 },
   label: { fontSize: 13.5, fontWeight: '600', color: COLORS.textDim, marginTop: 18, marginBottom: 9, textAlign: 'right' },
   subjChip: { borderWidth: 1.5, borderRadius: 99, paddingVertical: 10, paddingHorizontal: 14, minHeight: 44, justifyContent: 'center' },
   typeChip: { flex: 1, backgroundColor: '#fff', borderRadius: 14, paddingVertical: 13, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
-  dueChip: { flex: 1, backgroundColor: '#fff', borderRadius: 14, paddingVertical: 13, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
+  dueChip: { flex: 0, backgroundColor: '#fff', borderRadius: 14, paddingVertical: 13, paddingHorizontal: 16, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
   remindChip: { backgroundColor: '#fff', borderRadius: 99, paddingVertical: 11, paddingHorizontal: 15, minHeight: 44, justifyContent: 'center' },
 });

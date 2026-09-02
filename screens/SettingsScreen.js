@@ -92,7 +92,7 @@ export default function SettingsScreen() {
       </View>
 
       <Text style={styles.sectionLabel}>מקצועות</Text>
-      <View style={[styles.card, { flexDirection: 'row', flexWrap: 'wrap', gap: 7, padding: 14 }]}>
+      <View style={[styles.card, { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 7, padding: 14 }]}>
         {subjects.map(s => (
           <View key={s.id} style={[styles.subjTag, { backgroundColor: s.color + '1E' }]}>
             <Text style={{ color: s.color, fontSize: 12, fontWeight: '500' }}>{s.name}</Text>
@@ -126,7 +126,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   sectionLabel: { fontSize: 12.5, fontWeight: '600', color: COLORS.textDim, marginTop: 22, marginBottom: 8 },
   card: { backgroundColor: COLORS.card, borderRadius: 20, overflow: 'hidden' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
+  row: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
   rowTitle: { fontSize: 15, fontWeight: '500', color: COLORS.text },
   rowSub: { fontSize: 12.5, color: COLORS.textDim, marginTop: 2 },
   divider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: 16 },

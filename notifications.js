@@ -1,5 +1,4 @@
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -14,26 +13,32 @@ export async function requestPermissions() {
   return status === 'granted';
 }
 
-// Computes the actual Date the reminder should fire, based on task due date + kind.
+// Computes the actual Date the reminder should fire, based on the task's due date/time + kind.
 function computeFireDate(task) {
   const [y, m, d] = task.dueDate.split('-').map(Number);
-  const due = new Date(y, m - 1, d);
+  const [dh, dm] = (task.dueTime || '18:00').split(':').map(Number);
+  const due = new Date(y, m - 1, d, dh, dm, 0, 0);
 
   switch (task.remindKind) {
-    case 'due_morning':
-      due.setHours(7, 15, 0, 0);
-      break;
-    case 'due_1h':
-      due.setHours(17, 0, 0, 0);
-      break;
-    case 'day_before':
-      due.setDate(due.getDate() - 1);
-      due.setHours(18, 0, 0, 0);
-      break;
+    case 'due_morning': {
+      const dt = new Date(y, m - 1, d);
+      dt.setHours(7, 15, 0, 0);
+      return dt;
+    }
+    case 'due_1h': {
+      const dt = new Date(due);
+      dt.setHours(dt.getHours() - 1);
+      return dt;
+    }
+    case 'day_before': {
+      const dt = new Date(due);
+      dt.setDate(dt.getDate() - 1);
+      return dt;
+    }
+    case 'at_due':
     default:
-      due.setHours(18, 0, 0, 0);
+      return due;
   }
-  return due;
 }
 
 export async function scheduleTaskReminder(task) {
