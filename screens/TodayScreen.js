@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, TOP, todayIndex, toMin, dateOfWeekday, isoDate, plural } from '../theme';
 import { getSchedule, getSetting, setSetting, getTasks } from '../database';
 import { useTimer } from '../TimerContext';
+import { scheduleNextLessonOneOff, cancelReminder } from '../notifications';
 
 export default function TodayScreen({ onOpenWeek }) {
   const [lessons, setLessons] = useState([]);
@@ -13,6 +14,7 @@ export default function TodayScreen({ onOpenWeek }) {
   const [editingNote, setEditingNote] = useState(false);
   const [nowMin, setNowMin] = useState(new Date().getHours() * 60 + new Date().getMinutes());
   const [pickDuration, setPickDuration] = useState(false);
+  const [nextRemind, setNextRemind] = useState(null); // { slot, notifId }
   const timer = useTimer();
   const clockRef = useRef(null);
 
@@ -48,6 +50,18 @@ export default function TodayScreen({ onOpenWeek }) {
 
   async function saveNote() { await setSetting('dayNote', note); setEditingNote(false); }
 
+  async function toggleNextReminder() {
+    if (!focus || isNow) return;
+    if (nextRemind && nextRemind.slot === focus.slot) {
+      await cancelReminder(nextRemind.notifId);
+      setNextRemind(null);
+      return;
+    }
+    const notifId = await scheduleNextLessonOneOff(focus, 5);
+    if (notifId) setNextRemind({ slot: focus.slot, notifId });
+    else Alert.alert('אי אפשר להוסיף תזכורת', 'השיעור קרוב מדי או כבר התחיל.');
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingTop: TOP, paddingBottom: 110 }} showsVerticalScrollIndicator={false}>
@@ -81,10 +95,10 @@ export default function TodayScreen({ onOpenWeek }) {
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
               <Text style={{ fontSize: 15.5, fontWeight: '700', color: COLORS.text, textAlign: 'right' }}>
-                {timer.phase === 'break' ? 'הפסקה' : 'טיימר לימודים'}
+                {timer.phase === 'break' ? 'הפסקה' : 'טיימר למידה'}
               </Text>
               <Text style={{ fontSize: 12.5, color: COLORS.textDim, marginTop: 3, textAlign: 'right' }}>
-                {timer.phase === 'break' ? '5 דקות לנשום' : timer.duration + ' דקות ריכוז'}
+                {timer.phase === 'break' ? '5 דקות לנשום' : timer.duration + ' דקות'}
                 {timer.rounds > 0 ? ' · ' + plural(timer.rounds, 'סבב אחד הושלם', 'סבבים הושלמו') : ''}
               </Text>
             </View>
@@ -125,10 +139,7 @@ export default function TodayScreen({ onOpenWeek }) {
         </View>
 
         <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 11 }}>
-          <Text style={styles.sectionTitle}>השיעורים שלי</Text>
-          <TouchableOpacity onPress={onOpenWeek} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={{ color: COLORS.purple, fontSize: 13, fontWeight: '600' }}>כל השבוע</Text>
-          </TouchableOpacity>
+          <Text style={styles.sectionTitle}>השיעורים שלי היום</Text>
         </View>
 
         {lessons.map(l => {
@@ -161,7 +172,7 @@ export default function TodayScreen({ onOpenWeek }) {
         {lessons.length === 0 && (
           <View style={styles.empty}>
             <Text style={{ fontSize: 15.5, fontWeight: '700', color: COLORS.text }}>אין שיעורים היום</Text>
-            <Text style={{ fontSize: 13, color: COLORS.textDim, marginTop: 5 }}>יום חופש — או שהמערכת עוד לא מלאה</Text>
+            <Text style={{ fontSize: 13, color: COLORS.textDim, marginTop: 5 }}>יום חופש</Text>
           </View>
         )}
 
@@ -180,7 +191,10 @@ export default function TodayScreen({ onOpenWeek }) {
           </>
         )}
 
-        <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 11 }]}>הערה ליום</Text>
+        <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 11 }]}>הערה ליום</Text>
+        </View>
+
         {editingNote ? (
           <View style={styles.noteCard}>
             <TextInput value={note} onChangeText={setNote} multiline autoFocus
@@ -193,7 +207,7 @@ export default function TodayScreen({ onOpenWeek }) {
         ) : (
           <TouchableOpacity onPress={() => setEditingNote(true)} style={styles.noteCard} activeOpacity={0.8}>
             <Text style={{ fontSize: 14.5, color: '#5C5340', lineHeight: 21, textAlign: 'right' }}>{note || 'הקישי כדי להוסיף הערה ליום'}</Text>
-            <Text style={{ fontSize: 11.5, color: '#A79A78', marginTop: 8, textAlign: 'right' }}>נשמר בטלפון · לחיצה כדי לערוך</Text>
+            <Text style={{ fontSize: 11.5, color: '#A79A78', marginTop: 8, textAlign: 'right' }}> לחיצה כדי לערוך</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -205,6 +219,7 @@ const styles = StyleSheet.create({
   dateLabel: { fontSize: 13.5, color: COLORS.textDim, fontWeight: '500', textAlign: 'right' },
   pageTitle: { fontSize: 27, fontWeight: '700', color: COLORS.text, marginTop: 3, textAlign: 'right' },
   nextCard: { marginTop: 16, borderRadius: 24, padding: 18 },
+  remindBtn: { marginTop: 12, alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 99, paddingVertical: 8, paddingHorizontal: 14 },
   timerCard: { marginTop: 14, backgroundColor: COLORS.card, borderRadius: 22, padding: 18 },
   timerTrack: { marginTop: 14, height: 8, borderRadius: 99, backgroundColor: '#F0EBF7', overflow: 'hidden', flexDirection: 'row-reverse' },
   timerRing: { width: 70, height: 70, borderRadius: 99, borderWidth: 3, borderColor: '#F0EBF7', alignItems: 'center', justifyContent: 'center' },

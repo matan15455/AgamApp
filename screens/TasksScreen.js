@@ -2,11 +2,37 @@ import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, TOP, dueInfo, isoDate, addDays, plural } from '../theme';
+import { COLORS, TOP, dueInfo, isoDate, addDays, humanDuration } from '../theme';
 import { getTasks, getSubjects, addTask, updateTask, toggleTask, deleteTask, setTaskNotifId, getSetting } from '../database';
-import { scheduleTaskReminder, cancelReminder, TASK_REMIND_PRESETS, previewTaskReminder, fmtWhen } from '../notifications';
+import { scheduleTaskReminder, cancelReminder, previewTaskReminder, fmtWhen } from '../notifications';
 
-const TYPES = ['שיעורי בית', 'מבחן', 'עבודה', 'תזכורת'];
+const TYPES = ['שיעורי בית', 'עבודה', 'מבחן', 'תזכורת'];
+
+const TYPE_STYLES = {
+  'שיעורי בית': { bg: '#EAF1FD', fg: '#3E6FD1' },
+  'עבודה': { bg: '#FDF3E7', fg: '#B36B00' },
+  'מבחן': { bg: '#FDECF2', fg: '#D2547F' },
+  'תזכורת': { bg: '#F2EDFA', fg: COLORS.purple },
+};
+
+const REMIND_MODES = [
+  { key: 'none', label: 'בלי תזכורת' },
+  { key: 'at_due', label: 'בשעת ההגשה' },
+  { key: 'before', label: 'זמן מסוים לפני' },
+  { key: 'morning', label: 'בוקר ההגשה · 07:15' },
+  { key: 'daily', label: 'כל יום בשעה קבועה' },
+  { key: 'every', label: 'כל X שעות' },
+];
+
+function parseKind(kind) {
+  if (!kind || kind === 'none') return { mode: 'none' };
+  if (kind === 'at_due') return { mode: 'at_due' };
+  if (kind === 'morning') return { mode: 'morning' };
+  if (kind.startsWith('before:')) return { mode: 'before', mins: Number(kind.slice(7)) || 60 };
+  if (kind.startsWith('daily:')) return { mode: 'daily', time: kind.slice(6) || '08:00' };
+  if (kind.startsWith('every:')) return { mode: 'every', hours: Number(kind.slice(6)) || 2 };
+  return { mode: 'none' };
+}
 
 function timeToDate(t) {
   const [h, m] = (t || '18:00').split(':').map(Number);
@@ -26,10 +52,10 @@ export default function TasksScreen({ onOpenSettings }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [draft, setDraft] = useState(blankDraft());
-  const [picker, setPicker] = useState(null);
+  const [picker, setPicker] = useState(null); // 'date' | 'time' | 'dailyTime'
 
   function blankDraft() {
-    return { title: '', subjectId: 'math', type: 'שיעורי בית', dueDate: isoDate(new Date()), dueTime: '18:00', remindKind: 'before:1440' };
+    return { title: '', subjectId: 'math', type: 'שיעורי בית', dueDate: isoDate(new Date()), dueTime: '18:00', remindKind: 'at_due' };
   }
 
   const load = useCallback(async () => {
@@ -71,16 +97,13 @@ export default function TasksScreen({ onOpenSettings }) {
   async function onSave() {
     const payload = { ...draft, title: draft.title.trim() || (draft.type + ' ב' + subjById(draft.subjectId).name) };
 
-    // validation: the due datetime itself must not be in the past
+    // due date/time can never be in the past — picker already blocks it, this is a safety net
     const dueAt = new Date(payload.dueDate + 'T' + (payload.dueTime || '18:00') + ':00');
     if (dueAt.getTime() < Date.now() - 60000) {
-      return Alert.alert('המועד כבר עבר', 'ההגשה נקבעה ל' + fmtWhen(dueAt) + '. לשמור בכל זאת?', [
-        { text: 'תיקון התאריך', style: 'cancel' },
-        { text: 'שמירה', onPress: () => commit(payload) },
-      ]);
+      return Alert.alert('המועד כבר עבר', 'אי אפשר לשמור משימה עם תאריך ושעת הגשה שכבר עברו.');
     }
 
-    // validation: a one-off reminder that already passed can never fire
+    // a one-off reminder that already passed can never fire
     const fire = previewTaskReminder(payload);
     if (fire && fire.getTime() <= Date.now()) {
       return Alert.alert(
@@ -128,8 +151,17 @@ export default function TasksScreen({ onOpenSettings }) {
     ]);
   }
 
-  const REMIND = TASK_REMIND_PRESETS;
   const draftDue = dueInfo(draft.dueDate);
+  const parsed = parseKind(draft.remindKind);
+
+  function setMode(mode) {
+    if (mode === 'none') return setDraft(d => ({ ...d, remindKind: 'none' }));
+    if (mode === 'at_due') return setDraft(d => ({ ...d, remindKind: 'at_due' }));
+    if (mode === 'morning') return setDraft(d => ({ ...d, remindKind: 'morning' }));
+    if (mode === 'before') return setDraft(d => ({ ...d, remindKind: 'before:' + (parsed.mode === 'before' ? parsed.mins : 60) }));
+    if (mode === 'daily') return setDraft(d => ({ ...d, remindKind: 'daily:' + (parsed.mode === 'daily' ? parsed.time : '08:00') }));
+    if (mode === 'every') return setDraft(d => ({ ...d, remindKind: 'every:' + (parsed.mode === 'every' ? parsed.hours : 2) }));
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
@@ -179,6 +211,7 @@ export default function TasksScreen({ onOpenSettings }) {
               const di = dueInfo(t.dueDate);
               const tone = t.done ? '#F4F2F7' : di.overdue ? COLORS.redTint : di.isToday ? COLORS.purpleTint : '#F7F5FB';
               const toneFg = t.done ? '#A79FB4' : di.overdue ? COLORS.red : di.isToday ? COLORS.purple : '#6E6580';
+              const ts = TYPE_STYLES[t.type] || TYPE_STYLES['תזכורת'];
               return (
                 <View key={t.id} style={styles.taskRow}>
                   <TouchableOpacity onPress={() => onToggle(t)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -197,9 +230,9 @@ export default function TasksScreen({ onOpenSettings }) {
                         </View>
                         <Text style={{ fontSize: 11.5, fontWeight: '600', color: s.color || '#999' }}>{s.name}</Text>
                       </View>
-                      {t.type === 'מבחן' && !t.done && (
-                        <View style={styles.examBadge}><Text style={{ fontSize: 10.5, fontWeight: '700', color: '#D2547F' }}>מבחן</Text></View>
-                      )}
+                      <View style={[styles.typeBadge, { backgroundColor: t.done ? '#F0EDF4' : ts.bg }]}>
+                        <Text style={{ fontSize: 10.5, fontWeight: '700', color: t.done ? '#A79FB4' : ts.fg }}>{t.type}</Text>
+                      </View>
                       <Text style={{ fontSize: 12, color: di.overdue && !t.done ? COLORS.red : COLORS.textDim }}>
                         {t.done ? 'בוצע' : di.overdue ? 'עבר · ' + (di.diffDays === -1 ? 'אתמול' : 'יום ' + di.dayName)
                           : di.isToday ? 'היום, ' + (t.dueTime || '18:00')
@@ -228,7 +261,7 @@ export default function TasksScreen({ onOpenSettings }) {
           <View style={styles.empty}>
             <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.text }}>אין כאן משימות</Text>
             <Text style={{ fontSize: 14, color: COLORS.textDim, marginTop: 6, textAlign: 'center', lineHeight: 21 }}>
-              כל מה שצריך להגיש, ללמוד או לזכור — נוסיף בכפתור ה+
+                עליך להוסיף משימות בכפתור הפלוס למטה
             </Text>
           </View>
         )}
@@ -323,8 +356,18 @@ export default function TasksScreen({ onOpenSettings }) {
                     minimumDate={new Date(new Date().setHours(0, 0, 0, 0))}
                     onChange={(e, sel) => {
                       if (Platform.OS === 'android') setPicker(null);
-                      if (e.type === 'dismissed') return;
-                      if (sel) setDraft(d => ({ ...d, dueDate: isoDate(sel) }));
+                      if (e.type === 'dismissed' || !sel) return;
+                      const iso = isoDate(sel);
+                      // if the new date is today and the currently-set time already passed, bump the time forward
+                      let nextTime = draft.dueTime;
+                      if (iso === isoDate(new Date())) {
+                        const candidate = new Date(iso + 'T' + nextTime + ':00');
+                        if (candidate.getTime() < Date.now()) {
+                          const now = new Date();
+                          nextTime = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+                        }
+                      }
+                      setDraft(d => ({ ...d, dueDate: iso, dueTime: nextTime }));
                     }} />
                 )}
                 {picker === 'time' && (
@@ -332,8 +375,13 @@ export default function TasksScreen({ onOpenSettings }) {
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                     onChange={(e, sel) => {
                       if (Platform.OS === 'android') setPicker(null);
-                      if (e.type === 'dismissed') return;
-                      if (sel) setDraft(d => ({ ...d, dueTime: dateToTime(sel) }));
+                      if (e.type === 'dismissed' || !sel) return;
+                      const t = dateToTime(sel);
+                      const candidate = new Date(draft.dueDate + 'T' + t + ':00');
+                      if (candidate.getTime() < Date.now() - 30000) {
+                        return Alert.alert('השעה כבר עברה', 'אי אפשר לבחור שעה שכבר עברה היום.');
+                      }
+                      setDraft(d => ({ ...d, dueTime: t }));
                     }} />
                 )}
                 {picker && Platform.OS === 'ios' && (
@@ -352,17 +400,80 @@ export default function TasksScreen({ onOpenSettings }) {
                     return (past ? '⚠ ' : '') + 'ההתראה תופיע ב' + fmtWhen(f) + (past ? ' — זמן שכבר עבר' : '');
                   })()}
                 </Text>
-                <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
-                  {REMIND.map(r => {
-                    const on = draft.remindKind === r.key;
+                <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
+                  {REMIND_MODES.map(r => {
+                    const on = parsed.mode === r.key;
                     return (
-                      <TouchableOpacity key={r.key} onPress={() => setDraft(d => ({ ...d, remindKind: r.key }))}
+                      <TouchableOpacity key={r.key} onPress={() => setMode(r.key)}
                         style={[styles.pill, on && { backgroundColor: COLORS.purple, borderColor: COLORS.purple }]}>
                         <Text style={{ fontSize: 13, fontWeight: '600', color: on ? '#fff' : '#6E6580' }}>{r.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
+
+                {parsed.mode === 'before' && (
+                  <>
+                    <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                      {[15, 30, 60, 120, 1440, 10080].map(m => {
+                        const on = parsed.mins === m;
+                        return (
+                          <TouchableOpacity key={m} onPress={() => setDraft(d => ({ ...d, remindKind: 'before:' + m }))}
+                            style={[styles.quickPill, on && { backgroundColor: COLORS.purpleTint, borderColor: COLORS.purple }]}>
+                            <Text style={{ fontSize: 12.5, fontWeight: '600', color: on ? COLORS.purple : '#6E6580' }}>{humanDuration(m)}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <View style={[styles.stepperRow, { marginTop: 10 }]}>
+                      <TouchableOpacity onPress={() => setDraft(d => ({ ...d, remindKind: 'before:' + Math.max(5, parsed.mins - 15) }))} style={styles.stepBtn}>
+                        <Text style={{ fontSize: 18, color: '#5F5870' }}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.stepperValue}>{humanDuration(parsed.mins)} לפני ההגשה</Text>
+                      <TouchableOpacity onPress={() => setDraft(d => ({ ...d, remindKind: 'before:' + Math.min(20160, parsed.mins + 15) }))} style={styles.stepBtn}>
+                        <Text style={{ fontSize: 18, color: '#5F5870' }}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+
+                {parsed.mode === 'daily' && (
+                  <>
+                    <TouchableOpacity style={[styles.fieldBox, { marginTop: 10 }]} onPress={() => setPicker(picker === 'dailyTime' ? null : 'dailyTime')}>
+                      <Text style={styles.fieldLabel}>באיזו שעה כל יום?</Text>
+                      <Text style={styles.fieldValue}>{parsed.time}</Text>
+                    </TouchableOpacity>
+                    {picker === 'dailyTime' && (
+                      <DateTimePicker value={timeToDate(parsed.time)} mode="time" is24Hour
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={(e, sel) => {
+                          if (Platform.OS === 'android') setPicker(null);
+                          if (e.type === 'dismissed' || !sel) return;
+                          setDraft(d => ({ ...d, remindKind: 'daily:' + dateToTime(sel) }));
+                        }} />
+                    )}
+                    {picker === 'dailyTime' && Platform.OS === 'ios' && (
+                      <TouchableOpacity onPress={() => setPicker(null)} style={{ alignSelf: 'center', paddingVertical: 8 }}>
+                        <Text style={{ color: COLORS.purple, fontWeight: '700' }}>אישור</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
+
+                {parsed.mode === 'every' && (
+                  <View style={[styles.stepperRow, { marginTop: 10 }]}>
+                    <TouchableOpacity onPress={() => setDraft(d => ({ ...d, remindKind: 'every:' + Math.max(1, parsed.hours - 1) }))} style={styles.stepBtn}>
+                      <Text style={{ fontSize: 18, color: '#5F5870' }}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.stepperValue}>כל {parsed.hours} שעות</Text>
+                    <TouchableOpacity onPress={() => setDraft(d => ({ ...d, remindKind: 'every:' + Math.min(12, parsed.hours + 1) }))} style={styles.stepBtn}>
+                      <Text style={{ fontSize: 18, color: '#5F5870' }}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <View style={{ height: 14 }} />
+
                 {editId && (
                   <TouchableOpacity onPress={() => { const t = tasks.find(x => x.id === editId); if (t) confirmDelete(t); }} style={styles.dangerBtn}>
                     <Text style={{ color: COLORS.red, fontWeight: '700', fontSize: 14.5 }}>מחיקת המשימה</Text>
@@ -389,7 +500,7 @@ const styles = StyleSheet.create({
   checkbox: { width: 28, height: 28, borderRadius: 99, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   subjTag: { borderRadius: 99, paddingVertical: 4, paddingHorizontal: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 5 },
   letterDot: { width: 16, height: 16, borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
-  examBadge: { backgroundColor: '#FDECF2', borderRadius: 99, paddingVertical: 4, paddingHorizontal: 8 },
+  typeBadge: { borderRadius: 99, paddingVertical: 4, paddingHorizontal: 8 },
   dateBlock: { width: 44, borderRadius: 13, paddingVertical: 8, alignItems: 'center' },
   empty: { marginTop: 20, alignItems: 'center', padding: 34, borderWidth: 1, borderColor: '#DDD5E8', borderStyle: 'dashed', borderRadius: 22 },
   fab: { position: 'absolute', left: 20, bottom: 22, width: 60, height: 60, borderRadius: 99, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: COLORS.purple, shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } },
@@ -401,6 +512,10 @@ const styles = StyleSheet.create({
   subjChip: { borderWidth: 1.5, borderRadius: 99, paddingVertical: 9, paddingHorizontal: 12, minHeight: 42, flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   typeChip: { flex: 1, backgroundColor: '#fff', borderRadius: 14, paddingVertical: 12, alignItems: 'center', minHeight: 44, justifyContent: 'center' },
   pill: { backgroundColor: '#fff', borderWidth: 1.5, borderColor: COLORS.line, borderRadius: 99, paddingVertical: 10, paddingHorizontal: 14, minHeight: 42, justifyContent: 'center' },
+  quickPill: { backgroundColor: '#fff', borderWidth: 1.5, borderColor: COLORS.line, borderRadius: 99, paddingVertical: 8, paddingHorizontal: 12, minHeight: 36, justifyContent: 'center' },
+  stepperRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14, backgroundColor: '#fff', borderRadius: 16, padding: 12, justifyContent: 'space-between' },
+  stepperValue: { flex: 1, textAlign: 'center', fontWeight: '700', fontSize: 14.5, color: COLORS.text },
+  stepBtn: { width: 34, height: 34, borderRadius: 99, backgroundColor: '#F7F5FB', alignItems: 'center', justifyContent: 'center' },
   fieldBox: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 13 },
   fieldLabel: { fontSize: 11.5, color: COLORS.textDim, textAlign: 'right' },
   fieldValue: { fontSize: 17, fontWeight: '700', color: COLORS.text, textAlign: 'right', marginTop: 3 },

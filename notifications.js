@@ -17,31 +17,11 @@ export async function requestPermissions() {
   remindKind is a short string so it stays editable and future-proof:
     'none'            – no reminder
     'at_due'          – exactly at the due time
-    'before:<mins>'   – N minutes before the due time (30, 60, 120, 1440, 2880, 10080...)
+    'before:<mins>'   – N minutes before the due time (fully adjustable, not fixed presets)
     'morning'         – 07:15 on the due date
-    'daily:<HH:MM>'   – every day at that hour until it's marked done
-    'every:<hours>'   – repeating every N hours
+    'daily:<HH:MM>'   – every day at that hour until it's marked done (any HH:MM, chosen with a time picker)
+    'every:<hours>'   – repeating every N hours (adjustable 1–12)
 */
-
-export const TASK_REMIND_PRESETS = [
-  { key: 'none', label: 'בלי תזכורת' },
-  { key: 'at_due', label: 'בשעת ההגשה' },
-  { key: 'before:15', label: '15 דקות לפני' },
-  { key: 'before:30', label: 'חצי שעה לפני' },
-  { key: 'before:60', label: 'שעה לפני' },
-  { key: 'before:120', label: 'שעתיים לפני' },
-  { key: 'before:180', label: '3 שעות לפני' },
-  { key: 'morning', label: 'בבוקר של אותו יום · 07:15' },
-  { key: 'before:1440', label: 'יום לפני' },
-  { key: 'before:2880', label: 'יומיים לפני' },
-  { key: 'before:10080', label: 'שבוע לפני' },
-  { key: 'daily:08:00', label: 'כל יום ב-08:00' },
-  { key: 'daily:16:00', label: 'כל יום ב-16:00' },
-  { key: 'daily:20:00', label: 'כל יום ב-20:00' },
-  { key: 'every:2', label: 'כל שעתיים' },
-  { key: 'every:4', label: 'כל 4 שעות' },
-  { key: 'every:6', label: 'כל 6 שעות' },
-];
 
 export const LESSON_BEFORE_PRESETS = [0, 5, 10, 15, 20, 30, 45, 60];
 
@@ -120,6 +100,23 @@ export async function scheduleLessonReminder(day, startTime, subjectName, minute
       hour: Math.floor(total / 60),
       minute: total % 60,
     },
+  });
+}
+
+// one-off "remind me before the next upcoming lesson" — fires once, today only
+export async function scheduleNextLessonOneOff(lesson, minutesBefore = 5) {
+  const [h, m] = String(lesson.startTime).split(':').map(Number);
+  const fire = new Date();
+  fire.setHours(h, m - minutesBefore, 0, 0);
+  if (fire.getTime() <= Date.now()) return null;
+
+  return Notifications.scheduleNotificationAsync({
+    content: {
+      title: minutesBefore === 0 ? lesson.name + ' מתחיל עכשיו' : lesson.name + ' מתחיל בקרוב',
+      body: (minutesBefore === 0 ? 'שיעור ב-' + lesson.startTime : minutesBefore + ' דקות לשיעור (' + lesson.startTime + ')') + (lesson.room ? ' · כיתה ' + lesson.room : ''),
+      sound: true,
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fire },
   });
 }
 

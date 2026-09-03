@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, Switch, TextInput, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Alert } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLORS, TOP, DAYS, DAYS_SHORT, todayIndex, dateOfWeekday, isoDate, shiftTime, plural, fmtMin, toMin } from '../theme';
-import { getHours, getSchedule, setLesson, clearLesson, setHour, resetHours, getSubjects, getTasks, setLessonNotifId } from '../database';
+import { getHours, getSchedule, setLesson, clearLesson, setHour, resetHours, deleteHour, getSubjects, getTasks, setLessonNotifId } from '../database';
 import { scheduleLessonReminder, cancelReminder, LESSON_BEFORE_PRESETS } from '../notifications';
 
 function timeToDate(t) {
@@ -44,7 +44,7 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
 
   function openSlot(d, s) {
     const ex = cellAt(d, s);
-    const h = hours[s] || { startTime: '08:00', endTime: '08:45' };
+    const h = hours.find(x => x.slot === s) || { startTime: '08:00', endTime: '08:45' };
     const subj = ex ? subjects.find(x => x.id === ex.subjectId) : subjects[0];
     setPicker(null);
     setSlot({
@@ -70,6 +70,7 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
     const start = toMin(v.startTime), end = toMin(v.endTime);
 
     if (!v.subjectId) return Alert.alert('בחרי מקצוע', 'צריך לבחור איזה מקצוע יש במשבצת הזו.');
+    
     if (end <= start) {
       return Alert.alert('השעות לא הגיוניות', 'שעת הסיום (' + v.endTime + ') חייבת להיות אחרי שעת ההתחלה (' + v.startTime + ').');
     }
@@ -111,6 +112,28 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
     await load();
   }
 
+  async function confirmDeleteHour(s) {
+    const affected = schedule.filter(l => l.slot === s);
+    const doDelete = async () => {
+      for (const l of affected) if (l.notifId) await cancelReminder(l.notifId);
+      await deleteHour(s);
+      await load();
+    };
+    if (affected.length) {
+      Alert.alert(
+        'למחוק את שיעור ' + (s + 1) + '?',
+        'יימחקו גם ' + affected.length + ' שיעורים שמוגדרים בשעה הזו לאורך השבוע.',
+        [{ text: 'ביטול', style: 'cancel' }, { text: 'מחיקה', style: 'destructive', onPress: doDelete }]
+      );
+    } else {
+      Alert.alert(
+        'למחוק את שיעור ' + (s + 1) + '?',
+        'אפשר לשחזר את כל שעות ברירת המחדל מאוחר יותר בלחיצה על "ברירת מחדל".',
+        [{ text: 'ביטול', style: 'cancel' }, { text: 'מחיקה', style: 'destructive', onPress: doDelete }]
+      );
+    }
+  }
+
   const slotSubject = slot ? subjects.find(s => s.id === slot.subjectId) : null;
 
   return (
@@ -120,20 +143,20 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
           <Text style={{ fontSize: 26, fontWeight: '700', color: COLORS.text }}>מערכת שעות</Text>
           <View style={{ flexDirection: 'row-reverse', gap: 7 }}>
             <TouchableOpacity onPress={() => setHoursModal(true)} style={styles.smallBtn}>
-              <Text style={{ color: '#5F5870', fontSize: 13, fontWeight: '600' }}>שעות</Text>
+              <Text style={{ color: '#5F5870', fontSize: 13, fontWeight: '600' }}>הגדר שעות</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => {
-              const free = hours.findIndex((_, i) => !cellAt(day, i));
-              if (free === -1) return Alert.alert('היום מלא', 'כל השעות ביום ' + DAYS[day] + ' תפוסות. אפשר לערוך משבצת קיימת בלחיצה עליה.');
-              openSlot(day, free);
+              const free = hours.find(h => !cellAt(day, h.slot));
+              if (!free) return Alert.alert('היום מלא', 'כל השעות ביום ' + DAYS[day] + ' תפוסות. אפשר לערוך משבצת קיימת בלחיצה עליה.');
+              openSlot(day, free.slot);
             }} style={[styles.smallBtn, { backgroundColor: COLORS.purple }]}>
-              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>+ שיעור</Text>
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>הוסף שיעור</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.viewToggle}>
-          {[{ k: 'week', l: 'שבוע' }, { k: 'day', l: 'יום־יום' }].map(v => (
+          {[{ k: 'week', l: 'שבועי' }, { k: 'day', l: 'יומי' }].map(v => (
             <TouchableOpacity key={v.k} onPress={() => setView(v.k)}
               style={[styles.viewBtn, view === v.k && { backgroundColor: '#fff' }]}>
               <Text style={{ fontSize: 13.5, fontWeight: '600', color: view === v.k ? COLORS.text : '#8B839A' }}>{v.l}</Text>
@@ -150,31 +173,34 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                   <Text key={i} style={{ flex: 1, textAlign: 'center', fontSize: 12.5, fontWeight: '700', color: i === todayIndex() ? COLORS.purple : COLORS.textDim }}>{d}</Text>
                 ))}
               </View>
-              {hours.map((h, s) => (
-                <View key={s} style={{ flexDirection: 'row-reverse', gap: 4, marginBottom: 4 }}>
-                  <View style={{ width: 40, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.purple }}>{s + 1}</Text>
-                    <Text style={{ fontSize: 8.5, fontWeight: '600', color: '#605869', marginTop: 1 }}>{h.startTime}</Text>
-                    <Text style={{ fontSize: 8.5, color: COLORS.textFaint }}>{h.endTime}</Text>
+              {hours.map((h) => {
+                const s = h.slot;
+                return (
+                  <View key={s} style={{ flexDirection: 'row-reverse', gap: 4, marginBottom: 4 }}>
+                    <View style={{ width: 40, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.purple }}>{s + 1}</Text>
+                      <Text style={{ fontSize: 8.5, fontWeight: '600', color: '#605869', marginTop: 1 }}>{h.startTime}</Text>
+                      <Text style={{ fontSize: 8.5, color: COLORS.textFaint }}>{h.endTime}</Text>
+                    </View>
+                    {DAYS.map((_, d) => {
+                      const l = cellAt(d, s);
+                      return (
+                        <TouchableOpacity key={d} onPress={() => openSlot(d, s)} activeOpacity={0.6}
+                          style={[styles.cell, { backgroundColor: l ? l.color + '1C' : '#FAF9FC' }]}>
+                          {l ? (
+                            <>
+                              <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: '700', color: l.color }}>{l.short || l.name}</Text>
+                              <Text numberOfLines={1} style={{ fontSize: 8, color: l.color, opacity: 0.7, marginTop: 1 }}>{l.room}</Text>
+                            </>
+                          ) : (
+                            <Text style={{ fontSize: 13, color: '#DED8E6' }}>+</Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                  {DAYS.map((_, d) => {
-                    const l = cellAt(d, s);
-                    return (
-                      <TouchableOpacity key={d} onPress={() => openSlot(d, s)} activeOpacity={0.6}
-                        style={[styles.cell, { backgroundColor: l ? l.color + '1C' : '#FAF9FC' }]}>
-                        {l ? (
-                          <>
-                            <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: '700', color: l.color }}>{l.short || l.name}</Text>
-                            <Text numberOfLines={1} style={{ fontSize: 8, color: l.color, opacity: 0.7, marginTop: 1 }}>{l.room}</Text>
-                          </>
-                        ) : (
-                          <Text style={{ fontSize: 13, color: '#DED8E6' }}>+</Text>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              ))}
+                );
+              })}
             </View>
 
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginTop: 13, paddingHorizontal: 2 }}>
@@ -228,7 +254,7 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
             {dayLessons.length === 0 && (
               <View style={styles.empty}>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.text }}>אין שיעורים ביום {DAYS[day]}</Text>
-                <Text style={{ fontSize: 13, color: COLORS.textDim, marginTop: 5, textAlign: 'center' }}>לחצי על "+ שיעור" כדי להוסיף</Text>
+                <Text style={{ fontSize: 13, color: COLORS.textDim, marginTop: 5, textAlign: 'center' }}>עליך להוסיף שיעור</Text>
               </View>
             )}
           </>
@@ -255,6 +281,9 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                   </View>
 
                   <Text style={styles.label}>איזה מקצוע?</Text>
+                   <Text style={{ fontSize: 12, color: COLORS.textFaint, marginBottom:10, textAlign: 'right' }}>
+                      את המקצועות מגדירים בהגדרות האפליקציה
+                  </Text>
                   <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
                     {subjects.map(s => {
                       const on = slot.subjectId === s.id;
@@ -300,23 +329,24 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                     </>
                   )}
 
-                  <View style={{ marginTop: 10 }}>
+                  <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 10 }}>
                     <View style={styles.fieldBox}>
-                      <Text style={styles.fieldLabel}>כיתה לשיעור הזה</Text>
+                      <Text style={styles.fieldLabel}>כיתה</Text>
                       <TextInput value={slot.room} onChangeText={v => setSlot(m => ({ ...m, room: v }))}
-                        placeholder="למשל: 11/3 או מעבדה" placeholderTextColor="#C6BFD2" style={styles.fieldInput} />
+                        placeholder="למשל: יא2 או מעבדה" placeholderTextColor="#C6BFD2" style={styles.fieldInput} />
                     </View>
-                    <Text style={{ fontSize: 12, color: COLORS.textFaint, marginTop: 7, textAlign: 'right' }}>
-                      הכיתה נשמרת רק למשבצת הזו{slotSubject?.teacher ? ' · מורה: ' + slotSubject.teacher + ' (משתנה במסך המקצועות)' : ''}
-                    </Text>
+                    <View style={styles.fieldBox}>
+                      <Text style={styles.fieldLabel}>מורה</Text>
+                      <Text style={[styles.fieldInput, !slotSubject?.teacher && { color: COLORS.textFaint }]} numberOfLines={1}>
+                        {slotSubject?.teacher || 'לא הוגדר'}
+                      </Text>
+                    </View>
                   </View>
+          
 
                   <View style={styles.remindRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.text, textAlign: 'right' }}>תזכורת לפני השיעור</Text>
-                      <Text style={{ fontSize: 12, color: COLORS.textDim, marginTop: 2, textAlign: 'right' }}>
-                        בכל יום {DAYS[slot.day]} · {slotSubject?.name}
-                      </Text>
                     </View>
                     <Switch value={slot.remind} onValueChange={v => setSlot(m => ({ ...m, remind: v }))}
                       trackColor={{ true: COLORS.purple, false: '#DFD8E9' }} thumbColor="#fff" />
@@ -373,23 +403,40 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                   <Text style={styles.btnPrimaryText}>סיום</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={{ fontSize: 12.5, color: COLORS.textDim, marginTop: 10, textAlign: 'right' }}>
-                השעות האלה חלות על כל השבוע. שיעור בודד עם שעה חריגה — עורכים ישירות במשבצת שלו.
-              </Text>
+             
               <ScrollView style={{ marginTop: 12, maxHeight: 420 }} showsVerticalScrollIndicator={false}>
-                {hours.map((h, s) => (
-                  <View key={s} style={styles.hourRow}>
-                    <View style={{ width: 58 }}><Text style={{ fontWeight: '700', fontSize: 13.5, color: COLORS.text, textAlign: 'right' }}>שיעור {s + 1}</Text></View>
-                    <Stepper value={h.startTime} onChange={async (t) => {
-                      if (toMin(t) >= toMin(h.endTime)) return Alert.alert('לא הגיוני', 'שעת ההתחלה חייבת להיות לפני שעת הסיום (' + h.endTime + ').');
-                      await setHour(s, t, h.endTime); await load();
-                    }} />
-                    <Stepper value={h.endTime} onChange={async (t) => {
-                      if (toMin(t) <= toMin(h.startTime)) return Alert.alert('לא הגיוני', 'שעת הסיום חייבת להיות אחרי שעת ההתחלה (' + h.startTime + ').');
-                      await setHour(s, h.startTime, t); await load();
-                    }} />
-                  </View>
-                ))}
+                {hours.map((h) => {
+                  const s = h.slot;
+                  return (
+                    <View key={s} style={styles.hourRow}>
+                      <View style={{ width: 58 }}><Text style={{ fontWeight: '700', fontSize: 13.5, color: COLORS.text, textAlign: 'right' }}>שיעור {s + 1}</Text></View>
+                      <Stepper value={h.startTime} onChange={async (t) => {
+                        if (toMin(t) >= toMin(h.endTime)) return Alert.alert('לא הגיוני', 'שעת ההתחלה חייבת להיות לפני שעת הסיום (' + h.endTime + ').');
+                        const prev = hours.find(x => x.slot === s - 1);
+                        if (prev && toMin(t) < toMin(prev.endTime)) {
+                          return Alert.alert('לא הגיוני', 'שיעור ' + s + ' מסתיים ב-' + prev.endTime + ' — שיעור ' + (s + 1) + ' לא יכול להתחיל לפני זה.');
+                        }
+                        await setHour(s, t, h.endTime); await load();
+                      }} />
+                      <Stepper value={h.endTime} onChange={async (t) => {
+                        if (toMin(t) <= toMin(h.startTime)) return Alert.alert('לא הגיוני', 'שעת הסיום חייבת להיות אחרי שעת ההתחלה (' + h.startTime + ').');
+                        const next = hours.find(x => x.slot === s + 1);
+                        if (next && toMin(t) > toMin(next.startTime)) {
+                          return Alert.alert('לא הגיוני', 'שיעור ' + (s + 2) + ' מתחיל ב-' + next.startTime + ' — שיעור ' + (s + 1) + ' לא יכול להסתיים אחרי זה.');
+                        }
+                        await setHour(s, h.startTime, t); await load();
+                      }} />
+                      <TouchableOpacity onPress={() => confirmDeleteHour(s)} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }} style={styles.hourDeleteBtn}>
+                        <Text style={{ color: '#C0B8CE', fontSize: 15 }}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+                {hours.length === 0 && (
+                  <Text style={{ textAlign: 'center', color: COLORS.textDim, fontSize: 13, marginTop: 10 }}>
+                    אין שעות במערכת — אפשר לשחזר בלחיצה על "ברירת מחדל".
+                  </Text>
+                )}
                 <View style={{ height: 20 }} />
               </ScrollView>
             </View>
@@ -443,6 +490,7 @@ const styles = StyleSheet.create({
   btnPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   pill: { backgroundColor: '#fff', borderWidth: 1.5, borderColor: COLORS.line, borderRadius: 99, paddingVertical: 10, paddingHorizontal: 14, minHeight: 42, justifyContent: 'center' },
   hourRow: { flexDirection: 'row-reverse', gap: 8, alignItems: 'center', backgroundColor: '#fff', borderRadius: 16, padding: 10, marginBottom: 8 },
+  hourDeleteBtn: { width: 28, height: 28, borderRadius: 99, backgroundColor: '#F7F5FA', alignItems: 'center', justifyContent: 'center' },
   stepper: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: '#F7F5FB', borderRadius: 12, padding: 4, gap: 4, minHeight: 44 },
   stepBtn: { width: 32, height: 32, borderRadius: 99, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
 });

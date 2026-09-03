@@ -135,6 +135,11 @@ export const resetHours = async () => {
   for (const h of DEFAULT_HOURS) await db.runAsync('INSERT INTO hours (slot,startTime,endTime) VALUES (?,?,?)', h);
 };
 
+export const deleteHour = async (slot) => {
+  await db.runAsync('DELETE FROM lessons WHERE slot = ?', [slot]);
+  await db.runAsync('DELETE FROM hours WHERE slot = ?', [slot]);
+};
+
 /* ---------- מערכת שעות ---------- */
 // room is per-cell (it changes week to week); teacher comes from the subject
 export const getSchedule = () => db.getAllAsync(
@@ -207,15 +212,7 @@ export const setSetting = (key, value) => db.runAsync(
   [key, JSON.stringify(value)]
 );
 
-/* ---------- גיבוי / איפוס ---------- */
-export const exportAll = async () => ({
-  subjects: await getSubjects(),
-  hours: await getHours(),
-  lessons: await db.getAllAsync('SELECT * FROM lessons'),
-  tasks: await db.getAllAsync('SELECT * FROM tasks'),
-  exportedAt: new Date().toISOString(),
-});
-
+/* ---------- איפוס ---------- */
 export const wipeAll = async () => {
   await db.execAsync('DELETE FROM tasks; DELETE FROM lessons; DELETE FROM settings;');
 };
