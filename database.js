@@ -28,6 +28,12 @@ export async function initDB() {
       slot INTEGER NOT NULL,
       subjectId TEXT NOT NULL,
       remind INTEGER DEFAULT 1,
+      remindBefore INTEGER DEFAULT 10,
+      room TEXT,
+      teacher TEXT,
+      startTime TEXT,
+      endTime TEXT,
+      notifId TEXT,
       PRIMARY KEY (day, slot)
     );
 
@@ -49,41 +55,52 @@ export async function initDB() {
       value TEXT
     );
   `);
+  // migrations for DBs created by earlier versions
+  for (const col of ['room TEXT', 'teacher TEXT', 'startTime TEXT', 'endTime TEXT', 'notifId TEXT', 'remindBefore INTEGER DEFAULT 10']) {
+    try { await db.execAsync(`ALTER TABLE lessons ADD COLUMN ${col}`); } catch (e) {}
+  }
   await seedIfEmpty();
+  await topUpHours();
   return db;
 }
 
 const DEFAULT_SUBJECTS = [
-  ['math', 'מתמטיקה', 'מתמט׳', 'מת', '#5B7CE8', '11/3', ''],
-  ['eng', 'אנגלית', 'אנגל׳', 'אנ', '#E8749E', '11/3', ''],
-  ['lit', 'ספרות', 'ספרות', 'ספ', '#7C5CD3', '9/2', ''],
-  ['heb', 'לשון', 'לשון', 'לש', '#C77DDF', '11/3', ''],
-  ['hist', 'היסטוריה', 'היסט׳', 'הי', '#DE9448', '8/1', ''],
-  ['bio', 'ביולוגיה', 'ביולו׳', 'בי', '#33A87D', 'מעבדה', ''],
-  ['phy', 'פיזיקה', 'פיזי׳', 'פי', '#3FA5BC', 'מעבדה 2', ''],
-  ['sport', 'חנ״ג', 'חנ״ג', 'חנ', '#8B839A', 'אולם', ''],
+  ['math', 'מתמטיקה', 'מתמט׳', 'מת', '#5B7CE8', '11/3', 'ר. לוי'],
+  ['eng', 'אנגלית', 'אנגל׳', 'אנ', '#E8749E', '11/3', 'ד. כהן'],
+  ['lit', 'ספרות', 'ספרות', 'ספ', '#7C5CD3', '9/2', 'מ. אביב'],
+  ['heb', 'לשון', 'לשון', 'לש', '#C77DDF', '11/3', 'ע. בר'],
+  ['hist', 'היסטוריה', 'היסט׳', 'הי', '#DE9448', '8/1', 'א. נוי'],
+  ['bio', 'ביולוגיה', 'ביולו׳', 'בי', '#33A87D', 'מעבדה', 'ל. שגב'],
+  ['phy', 'פיזיקה', 'פיזי׳', 'פי', '#3FA5BC', 'מעבדה 2', 'ג. דהן'],
+  ['sport', 'חנ״ג', 'חנ״ג', 'חנ', '#8B839A', 'אולם', 'ט. מור'],
 ];
 
 const DEFAULT_HOURS = [
   [0, '08:00', '08:45'], [1, '08:50', '09:35'], [2, '09:50', '10:35'], [3, '10:40', '11:25'],
   [4, '11:40', '12:25'], [5, '12:30', '13:15'], [6, '13:30', '14:15'], [7, '14:20', '15:05'],
+  [8, '15:10', '15:55'], [9, '16:00', '16:45'], [10, '16:50', '17:35'],
 ];
 
 async function seedIfEmpty() {
   const row = await db.getFirstAsync('SELECT COUNT(*) AS n FROM subjects');
   if (row.n > 0) return;
   for (const s of DEFAULT_SUBJECTS) {
-    await db.runAsync(
-      'INSERT INTO subjects (id,name,short,letter,color,room,teacher) VALUES (?,?,?,?,?,?,?)', s
-    );
+    await db.runAsync('INSERT INTO subjects (id,name,short,letter,color,room,teacher) VALUES (?,?,?,?,?,?,?)', s);
   }
   for (const h of DEFAULT_HOURS) {
     await db.runAsync('INSERT INTO hours (slot,startTime,endTime) VALUES (?,?,?)', h);
   }
 }
 
+// existing installs were created with 8 slots — add any missing ones without touching edits
+async function topUpHours() {
+  for (const [slot, start, end] of DEFAULT_HOURS) {
+    await db.runAsync('INSERT OR IGNORE INTO hours (slot,startTime,endTime) VALUES (?,?,?)', [slot, start, end]);
+  }
+}
+
 /* ---------- מקצועות ---------- */
-export const getSubjects = () => db.getAllAsync('SELECT * FROM subjects ORDER BY name');
+export const getSubjects = () => db.getAllAsync('SELECT * FROM subjects ORDER BY rowid');
 
 export const saveSubject = (s) => db.runAsync(
   `INSERT INTO subjects (id,name,short,letter,color,room,teacher) VALUES (?,?,?,?,?,?,?)
@@ -92,7 +109,17 @@ export const saveSubject = (s) => db.runAsync(
   [s.id, s.name, s.short, s.letter, s.color, s.room, s.teacher]
 );
 
-export const deleteSubject = (id) => db.runAsync('DELETE FROM subjects WHERE id = ?', [id]);
+export const deleteSubject = async (id) => {
+  await db.runAsync('DELETE FROM lessons WHERE subjectId = ?', [id]);
+  await db.runAsync('UPDATE tasks SET subjectId = NULL WHERE subjectId = ?', [id]);
+  await db.runAsync('DELETE FROM subjects WHERE id = ?', [id]);
+};
+
+export const subjectUsage = async (id) => {
+  const l = await db.getFirstAsync('SELECT COUNT(*) AS n FROM lessons WHERE subjectId = ?', [id]);
+  const t = await db.getFirstAsync('SELECT COUNT(*) AS n FROM tasks WHERE subjectId = ? AND done = 0', [id]);
+  return { lessons: l.n, tasks: t.n };
+};
 
 /* ---------- שעות המערכת ---------- */
 export const getHours = () => db.getAllAsync('SELECT * FROM hours ORDER BY slot');
@@ -109,30 +136,31 @@ export const resetHours = async () => {
 };
 
 /* ---------- מערכת שעות ---------- */
+// room is per-cell (it changes week to week); teacher comes from the subject
 export const getSchedule = () => db.getAllAsync(
-  `SELECT l.day, l.slot, l.remind, s.id AS subjectId, s.name, s.short, s.letter, s.color, s.room, s.teacher,
-          h.startTime, h.endTime
+  `SELECT l.day, l.slot, l.remind, l.notifId, COALESCE(l.remindBefore, 10) AS remindBefore,
+          s.id AS subjectId, s.name, s.short, s.letter, s.color,
+          l.room AS room,
+          s.teacher AS teacher,
+          COALESCE(l.startTime, h.startTime) AS startTime,
+          COALESCE(l.endTime, h.endTime) AS endTime
    FROM lessons l
    JOIN subjects s ON s.id = l.subjectId
-   JOIN hours h ON h.slot = l.slot
+   LEFT JOIN hours h ON h.slot = l.slot
    ORDER BY l.day, l.slot`
 );
 
-export const getDaySchedule = (day) => db.getAllAsync(
-  `SELECT l.day, l.slot, l.remind, s.id AS subjectId, s.name, s.color, s.room, s.teacher,
-          h.startTime, h.endTime
-   FROM lessons l
-   JOIN subjects s ON s.id = l.subjectId
-   JOIN hours h ON h.slot = l.slot
-   WHERE l.day = ? ORDER BY l.slot`,
-  [day]
+export const setLesson = (day, slot, v) => db.runAsync(
+  `INSERT INTO lessons (day,slot,subjectId,remind,remindBefore,room,teacher,startTime,endTime) VALUES (?,?,?,?,?,?,?,?,?)
+   ON CONFLICT(day,slot) DO UPDATE SET subjectId=excluded.subjectId, remind=excluded.remind,
+   remindBefore=excluded.remindBefore, room=excluded.room, teacher=excluded.teacher,
+   startTime=excluded.startTime, endTime=excluded.endTime`,
+  [day, slot, v.subjectId, v.remind ? 1 : 0, v.remindBefore == null ? 10 : v.remindBefore,
+   v.room || null, v.teacher || null, v.startTime || null, v.endTime || null]
 );
 
-export const setLesson = (day, slot, subjectId, remind = 1) => db.runAsync(
-  `INSERT INTO lessons (day,slot,subjectId,remind) VALUES (?,?,?,?)
-   ON CONFLICT(day,slot) DO UPDATE SET subjectId=excluded.subjectId, remind=excluded.remind`,
-  [day, slot, subjectId, remind ? 1 : 0]
-);
+export const setLessonNotifId = (day, slot, notifId) =>
+  db.runAsync('UPDATE lessons SET notifId = ? WHERE day = ? AND slot = ?', [notifId, day, slot]);
 
 export const clearLesson = (day, slot) =>
   db.runAsync('DELETE FROM lessons WHERE day = ? AND slot = ?', [day, slot]);
@@ -167,8 +195,10 @@ export const setTaskNotifId = (id, notifId) =>
 
 /* ---------- הגדרות ---------- */
 export const getSetting = async (key, fallback = null) => {
+  if (!db) return fallback;
   const row = await db.getFirstAsync('SELECT value FROM settings WHERE key = ?', [key]);
-  return row ? JSON.parse(row.value) : fallback;
+  if (!row) return fallback;
+  try { return JSON.parse(row.value); } catch (e) { return fallback; }
 };
 
 export const setSetting = (key, value) => db.runAsync(

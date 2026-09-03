@@ -1,142 +1,224 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
-import { COLORS, todayIndex } from '../theme';
-import { getSchedule, getSetting, setSetting } from '../database';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS, TOP, todayIndex, toMin, dateOfWeekday, isoDate, plural } from '../theme';
+import { getSchedule, getSetting, setSetting, getTasks } from '../database';
+import { useTimer } from '../TimerContext';
 
-const TODAY = todayIndex() > 5 ? 0 : todayIndex();
-const NOW_MIN = new Date().getHours() * 60 + new Date().getMinutes();
-
-function toMin(t) { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
-
-export default function TodayScreen() {
+export default function TodayScreen({ onOpenWeek }) {
   const [lessons, setLessons] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const [editingNote, setEditingNote] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(25 * 60);
-  const [running, setRunning] = useState(false);
-  const timerRef = useRef(null);
+  const [nowMin, setNowMin] = useState(new Date().getHours() * 60 + new Date().getMinutes());
+  const [pickDuration, setPickDuration] = useState(false);
+  const timer = useTimer();
+  const clockRef = useRef(null);
+
+  const dayIdx = todayIndex() > 5 ? 0 : todayIndex();
 
   const load = useCallback(async () => {
     const all = await getSchedule();
-    setLessons(all.filter(l => l.day === TODAY).sort((a, b) => a.slot - b.slot));
+    setLessons(all.filter(l => l.day === dayIdx).sort((a, b) => a.slot - b.slot));
+    setTasks(await getTasks());
     setNote(await getSetting('dayNote', ''));
-  }, []);
+    setName(await getSetting('studentName', ''));
+  }, [dayIdx]);
+
   useEffect(() => { load(); }, [load]);
-  useEffect(() => () => clearInterval(timerRef.current), []);
+  useEffect(() => {
+    clockRef.current = setInterval(() => {
+      const d = new Date();
+      setNowMin(d.getHours() * 60 + d.getMinutes());
+    }, 30000);
+    return () => clearInterval(clockRef.current);
+  }, []);
 
-  function toggleTimer() {
-    if (running) {
-      clearInterval(timerRef.current);
-      setRunning(false);
-    } else {
-      setRunning(true);
-      timerRef.current = setInterval(() => {
-        setSecondsLeft(s => {
-          if (s <= 1) { clearInterval(timerRef.current); setRunning(false); return 0; }
-          return s - 1;
-        });
-      }, 1000);
-    }
-  }
-  function resetTimer() { clearInterval(timerRef.current); setRunning(false); setSecondsLeft(25 * 60); }
+  const current = lessons.find(l => toMin(l.startTime) <= nowMin && toMin(l.endTime) > nowMin);
+  const upcoming = lessons.find(l => toMin(l.startTime) > nowMin);
+  const focus = current || upcoming;
+  const isNow = !!current;
 
-  const nextLesson = lessons.find(l => toMin(l.endTime) > NOW_MIN) || null;
-  const isNow = nextLesson && toMin(nextLesson.startTime) <= NOW_MIN && toMin(nextLesson.endTime) > NOW_MIN;
+  const todayIso = isoDate(new Date());
+  const todayTasks = tasks.filter(t => !t.done && t.dueDate === todayIso);
+  const hwFor = (subjectId) => tasks.filter(t => !t.done && t.subjectId === subjectId && t.dueDate === todayIso).length;
 
-  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
-  const ss = String(secondsLeft % 60).padStart(2, '0');
+  const mm = timer.mm, ss = timer.ss;
 
-  async function saveNote() {
-    await setSetting('dayNote', note);
-    setEditingNote(false);
-  }
+  async function saveNote() { await setSetting('dayNote', note); setEditingNote(false); }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.bg }} contentContainerStyle={{ padding: 20, paddingTop: 54, paddingBottom: 100 }}>
-      <Text style={{ fontSize: 14, color: COLORS.textDim, fontWeight: '500', textAlign: 'right' }}>
-        {new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'numeric' })}
-      </Text>
-      <Text style={{ fontSize: 30, fontWeight: '700', color: COLORS.text, marginTop: 4, textAlign: 'right' }}>היום</Text>
-
-      <View style={styles.nextCard}>
-        <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '500' }}>
-          {nextLesson ? (isNow ? 'עכשיו · עד ' + nextLesson.endTime : 'השיעור הבא') : 'אין עוד שיעורים היום'}
+    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: TOP, paddingBottom: 110 }} showsVerticalScrollIndicator={false}>
+        <Text style={styles.dateLabel}>
+          {new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}
         </Text>
-        {nextLesson && (
-          <>
-            <Text style={{ color: '#fff', fontSize: 24, fontWeight: '700', marginTop: 8 }}>{nextLesson.name}</Text>
-            <Text style={{ color: 'rgba(255,255,255,0.88)', fontSize: 13.5, marginTop: 3 }}>
-              {nextLesson.startTime}–{nextLesson.endTime} · כיתה {nextLesson.room}
+        <Text style={styles.pageTitle}>היום</Text>
+
+        <LinearGradient colors={[COLORS.purple, COLORS.pink]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.nextCard}>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+            {isNow && <View style={{ width: 6, height: 6, borderRadius: 99, backgroundColor: '#fff' }} />}
+            <Text style={{ color: 'rgba(255,255,255,0.92)', fontSize: 12.5, fontWeight: '600' }}>
+              {focus ? (isNow ? 'עכשיו · עד ' + focus.endTime : 'השיעור הבא · ' + focus.startTime) : 'אין עוד שיעורים היום'}
             </Text>
-          </>
-        )}
-      </View>
+          </View>
+          {focus ? (
+            <>
+              <Text style={{ color: '#fff', fontSize: 25, fontWeight: '700', marginTop: 9, textAlign: 'right' }}>{focus.name}</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, marginTop: 4, textAlign: 'right' }}>
+                שיעור {focus.slot + 1} • {focus.startTime}–{focus.endTime} • כיתה {focus.room}{focus.teacher ? ' • ' + focus.teacher : ''}
+              </Text>
+            </>
+          ) : (
+            <Text style={{ color: '#fff', fontSize: 19, fontWeight: '700', marginTop: 9, textAlign: 'right' }}>
+              {name ? name + ', סיימת להיום' : 'סיימת להיום'}
+            </Text>
+          )}
+        </LinearGradient>
 
-      <View style={[styles.timerCard, { flexDirection: 'row-reverse' }]}>
-        <View style={styles.timerCircle}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>{mm}:{ss}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.text }}>טיימר לימודים</Text>
-          <Text style={{ fontSize: 12.5, color: COLORS.textDim, marginTop: 2 }}>25 דקות ריכוז, אחר כך הפסקה</Text>
-          <View style={{ flexDirection: 'row-reverse', gap: 7, marginTop: 10 }}>
-            <TouchableOpacity onPress={toggleTimer} style={styles.timerBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={{ color: '#fff', fontSize: 13.5, fontWeight: '600' }}>{running ? 'עצירה' : 'התחלה'}</Text>
+        <View style={styles.timerCard}>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View>
+              <Text style={{ fontSize: 15.5, fontWeight: '700', color: COLORS.text, textAlign: 'right' }}>
+                {timer.phase === 'break' ? 'הפסקה' : 'טיימר לימודים'}
+              </Text>
+              <Text style={{ fontSize: 12.5, color: COLORS.textDim, marginTop: 3, textAlign: 'right' }}>
+                {timer.phase === 'break' ? '5 דקות לנשום' : timer.duration + ' דקות ריכוז'}
+                {timer.rounds > 0 ? ' · ' + plural(timer.rounds, 'סבב אחד הושלם', 'סבבים הושלמו') : ''}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 34, fontWeight: '700', color: timer.running ? COLORS.purple : COLORS.text, letterSpacing: 0.5 }}>
+              {mm}:{ss}
+            </Text>
+          </View>
+
+          <View style={styles.timerTrack}>
+            <View style={{ width: `${Math.min(100, Math.max(0, timer.progress * 100))}%`, height: '100%', borderRadius: 99, backgroundColor: timer.phase === 'break' ? COLORS.green : COLORS.purple }} />
+          </View>
+
+          <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 14, alignItems: 'center' }}>
+            <TouchableOpacity onPress={timer.toggle} style={[styles.timerBtn, timer.running && { backgroundColor: COLORS.text }]}>
+              <Text style={{ color: '#fff', fontSize: 13.5, fontWeight: '700' }}>{timer.running ? 'עצירה' : timer.progress > 0 ? 'המשך' : 'התחלה'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={resetTimer} style={styles.timerBtnSecondary} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={{ color: '#6E6580', fontSize: 13.5 }}>איפוס</Text>
+            <TouchableOpacity onPress={timer.reset} style={styles.timerBtnSecondary}>
+              <Text style={{ color: '#6E6580', fontSize: 13.5, fontWeight: '600' }}>איפוס</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setPickDuration(v => !v)} style={styles.timerBtnSecondary}>
+              <Text style={{ color: '#6E6580', fontSize: 13.5, fontWeight: '600' }}>{timer.duration} דק׳</Text>
             </TouchableOpacity>
           </View>
+
+          {pickDuration && (
+            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginTop: 13, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 13 }}>
+              {[10, 15, 20, 25, 30, 45, 60, 90].map(m => {
+                const on = timer.duration === m;
+                return (
+                  <TouchableOpacity key={m} onPress={() => { timer.changeDuration(m); setPickDuration(false); }}
+                    style={[styles.pill, on && { backgroundColor: COLORS.purple, borderColor: COLORS.purple }]}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: on ? '#fff' : '#6E6580' }}>{m} דק׳</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
-      </View>
 
-      <Text style={styles.sectionTitle}>השיעורים שלי</Text>
-      {lessons.map(l => {
-        const now = toMin(l.startTime) <= NOW_MIN && toMin(l.endTime) > NOW_MIN;
-        const past = toMin(l.endTime) <= NOW_MIN;
-        return (
-          <View key={l.slot} style={[styles.lessonRow, past && { opacity: 0.55 }, { flexDirection: 'row-reverse' }]}>
-            <View style={{ width: 48, alignItems: 'center' }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.text }}>{l.startTime}</Text>
-              <Text style={{ fontSize: 10.5, color: COLORS.textFaint }}>{l.endTime}</Text>
-            </View>
-            <View style={{ width: 4, borderRadius: 99, backgroundColor: l.color, alignSelf: 'stretch' }} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, fontWeight: '500', color: COLORS.text }}>{l.name}</Text>
-              <Text style={{ fontSize: 12, color: COLORS.textDim, marginTop: 2 }}>כיתה {l.room}</Text>
-            </View>
-            {now && <View style={styles.nowTag}><Text style={{ color: '#fff', fontSize: 10.5, fontWeight: '600' }}>עכשיו</Text></View>}
-          </View>
-        );
-      })}
-      {lessons.length === 0 && <Text style={{ color: COLORS.textDim, marginTop: 4 }}>אין שיעורים היום</Text>}
-
-      <Text style={styles.sectionTitle}>הערה ליום</Text>
-      {editingNote ? (
-        <View style={styles.noteCard}>
-          <TextInput value={note} onChangeText={setNote} multiline style={{ fontSize: 14, minHeight: 60, textAlign: 'right' }} placeholder="למשל: להביא אישור טיול" />
-          <TouchableOpacity onPress={saveNote} style={{ marginTop: 8, alignSelf: 'flex-end' }}>
-            <Text style={{ color: COLORS.purple, fontWeight: '700' }}>שמירה</Text>
+        <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 11 }}>
+          <Text style={styles.sectionTitle}>השיעורים שלי</Text>
+          <TouchableOpacity onPress={onOpenWeek} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={{ color: COLORS.purple, fontSize: 13, fontWeight: '600' }}>כל השבוע</Text>
           </TouchableOpacity>
         </View>
-      ) : (
-        <TouchableOpacity onPress={() => setEditingNote(true)} style={styles.noteCard}>
-          <Text style={{ fontSize: 14, color: '#5C5340', lineHeight: 21 }}>{note || 'הקישי כדי להוסיף הערה ליום'}</Text>
-          <Text style={{ fontSize: 11.5, color: '#A79A78', marginTop: 8 }}>נשמר בטלפון · לחיצה כדי לערוך</Text>
-        </TouchableOpacity>
-      )}
-    </ScrollView>
+
+        {lessons.map(l => {
+          const now = toMin(l.startTime) <= nowMin && toMin(l.endTime) > nowMin;
+          const past = toMin(l.endTime) <= nowMin;
+          const hw = hwFor(l.subjectId);
+          return (
+            <View key={l.slot} style={[styles.lessonRow, past && { opacity: 0.5 }]}>
+              <View style={{ width: 52, alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.text }}>{l.startTime}</Text>
+                <Text style={{ fontSize: 11.5, color: COLORS.textFaint, marginTop: 1 }}>{l.endTime}</Text>
+              </View>
+              <View style={{ width: 4, borderRadius: 99, backgroundColor: l.color, alignSelf: 'stretch' }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.text, textAlign: 'right' }}>{l.name}</Text>
+                <Text style={{ fontSize: 12, color: COLORS.textDim, marginTop: 3, textAlign: 'right' }}>
+                  שיעור {l.slot + 1} • כיתה {l.room}{l.teacher ? ' • ' + l.teacher : ''}
+                </Text>
+              </View>
+              {now ? (
+                <View style={styles.nowTag}><Text style={{ color: '#fff', fontSize: 10.5, fontWeight: '700' }}>עכשיו</Text></View>
+              ) : hw > 0 ? (
+                <View style={[styles.hwBadge, { backgroundColor: l.color + '1F' }]}>
+                  <Text style={{ fontSize: 10.5, fontWeight: '700', color: l.color }}>{plural(hw, 'משימה אחת', 'משימות')}</Text>
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+        {lessons.length === 0 && (
+          <View style={styles.empty}>
+            <Text style={{ fontSize: 15.5, fontWeight: '700', color: COLORS.text }}>אין שיעורים היום</Text>
+            <Text style={{ fontSize: 13, color: COLORS.textDim, marginTop: 5 }}>יום חופש — או שהמערכת עוד לא מלאה</Text>
+          </View>
+        )}
+
+        {todayTasks.length > 0 && (
+          <>
+            <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 11 }]}>להגיש היום</Text>
+            {todayTasks.map(t => (
+              <View key={t.id} style={styles.taskMini}>
+                <View style={[styles.letterDot, { backgroundColor: t.subjectColor || '#999', width: 20, height: 20 }]}>
+                  <Text style={{ color: '#fff', fontSize: 9.5, fontWeight: '700' }}>{t.subjectLetter}</Text>
+                </View>
+                <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '600', color: COLORS.text, textAlign: 'right' }}>{t.title}</Text>
+                <Text style={{ fontSize: 12, color: COLORS.textDim }}>{t.dueTime || '18:00'}</Text>
+              </View>
+            ))}
+          </>
+        )}
+
+        <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 11 }]}>הערה ליום</Text>
+        {editingNote ? (
+          <View style={styles.noteCard}>
+            <TextInput value={note} onChangeText={setNote} multiline autoFocus
+              placeholder="למשל: להביא אישור טיול" placeholderTextColor="#BFAF8C"
+              style={{ fontSize: 14.5, minHeight: 60, textAlign: 'right', color: '#5C5340', lineHeight: 21 }} />
+            <TouchableOpacity onPress={saveNote} style={{ marginTop: 8, alignSelf: 'flex-start' }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={{ color: COLORS.purple, fontWeight: '700' }}>שמירה</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity onPress={() => setEditingNote(true)} style={styles.noteCard} activeOpacity={0.8}>
+            <Text style={{ fontSize: 14.5, color: '#5C5340', lineHeight: 21, textAlign: 'right' }}>{note || 'הקישי כדי להוסיף הערה ליום'}</Text>
+            <Text style={{ fontSize: 11.5, color: '#A79A78', marginTop: 8, textAlign: 'right' }}>נשמר בטלפון · לחיצה כדי לערוך</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  nextCard: { marginTop: 16, borderRadius: 24, padding: 18, backgroundColor: COLORS.purple },
-  timerCard: { marginTop: 14, backgroundColor: COLORS.card, borderRadius: 22, padding: 16, flexDirection: 'row', gap: 16, alignItems: 'center' },
-  timerCircle: { width: 66, height: 66, borderRadius: 99, backgroundColor: COLORS.purpleTint, alignItems: 'center', justifyContent: 'center' },
-  timerBtn: { backgroundColor: COLORS.purple, borderRadius: 99, paddingVertical: 11, paddingHorizontal: 18, minHeight: 44, justifyContent: 'center' },
-  timerBtnSecondary: { backgroundColor: '#F2EEF8', borderRadius: 99, paddingVertical: 11, paddingHorizontal: 16, minHeight: 44, justifyContent: 'center' },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginTop: 22, marginBottom: 10 },
-  lessonRow: { flexDirection: 'row', gap: 12, backgroundColor: COLORS.card, borderRadius: 18, padding: 13, marginBottom: 8, alignItems: 'stretch' },
-  nowTag: { alignSelf: 'center', backgroundColor: COLORS.purple, borderRadius: 99, paddingVertical: 4, paddingHorizontal: 9 },
+  dateLabel: { fontSize: 13.5, color: COLORS.textDim, fontWeight: '500', textAlign: 'right' },
+  pageTitle: { fontSize: 27, fontWeight: '700', color: COLORS.text, marginTop: 3, textAlign: 'right' },
+  nextCard: { marginTop: 16, borderRadius: 24, padding: 18 },
+  timerCard: { marginTop: 14, backgroundColor: COLORS.card, borderRadius: 22, padding: 18 },
+  timerTrack: { marginTop: 14, height: 8, borderRadius: 99, backgroundColor: '#F0EBF7', overflow: 'hidden', flexDirection: 'row-reverse' },
+  timerRing: { width: 70, height: 70, borderRadius: 99, borderWidth: 3, borderColor: '#F0EBF7', alignItems: 'center', justifyContent: 'center' },
+  timerBtn: { backgroundColor: COLORS.purple, borderRadius: 99, paddingVertical: 11, paddingHorizontal: 19, minHeight: 42, justifyContent: 'center' },
+  timerBtnSecondary: { backgroundColor: '#F2EEF8', borderRadius: 99, paddingVertical: 11, paddingHorizontal: 17, minHeight: 42, justifyContent: 'center' },
+  durationCard: { marginTop: 10, backgroundColor: COLORS.card, borderRadius: 20, padding: 15 },
+  pill: { backgroundColor: '#F9F7FC', borderWidth: 1.5, borderColor: COLORS.line, borderRadius: 99, paddingVertical: 9, paddingHorizontal: 14, minHeight: 40, justifyContent: 'center' },
+  sectionTitle: { fontSize: 16.5, fontWeight: '700', color: COLORS.text },
+  lessonRow: { flexDirection: 'row-reverse', gap: 11, backgroundColor: COLORS.card, borderRadius: 18, padding: 14, marginBottom: 9, alignItems: 'center' },
+  nowTag: { backgroundColor: COLORS.purple, borderRadius: 99, paddingVertical: 5, paddingHorizontal: 10 },
+  hwBadge: { borderRadius: 99, paddingVertical: 5, paddingHorizontal: 10 },
+  taskMini: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, backgroundColor: COLORS.card, borderRadius: 16, padding: 13, marginBottom: 8 },
+  letterDot: { borderRadius: 99, alignItems: 'center', justifyContent: 'center' },
+  empty: { alignItems: 'center', padding: 26, borderWidth: 1, borderColor: '#DDD5E8', borderStyle: 'dashed', borderRadius: 20 },
   noteCard: { backgroundColor: '#FFF8E9', borderRadius: 20, padding: 15, borderWidth: 1, borderColor: '#F6E7C4' },
+  fab: { position: 'absolute', left: 20, bottom: 22, width: 60, height: 60, borderRadius: 99, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: COLORS.purple, shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } },
 });
