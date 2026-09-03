@@ -133,6 +133,24 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
     }
   }
 
+  const MAX_HOURS = 12;
+
+  async function addHour() {
+    if (hours.length >= MAX_HOURS) {
+      return Alert.alert('הגעת למקסימום', 'אפשר להוסיף עד ' + MAX_HOURS + ' שעות במערכת.');
+    }
+    const newSlot = hours.length ? Math.max(...hours.map(h => h.slot)) + 1 : 0;
+    let startTime = '08:00', endTime = '08:45';
+    if (hours.length) {
+      const last = hours.reduce((a, b) => (toMin(a.endTime) > toMin(b.endTime) ? a : b));
+      const start = toMin(last.endTime) + 5; // same 5-minute gap used between the default hours
+      startTime = fmtMin(start);
+      endTime = fmtMin(start + 45); // 45-minute default lesson length, matches the defaults
+    }
+    await setHour(newSlot, startTime, endTime);
+    await load();
+  }
+
   const slotSubject = slot ? subjects.find(s => s.id === slot.subjectId) : null;
 
   return (
@@ -149,13 +167,13 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
               if (!free) return Alert.alert('היום מלא', 'כל השעות ביום ' + DAYS[day] + ' תפוסות. אפשר לערוך משבצת קיימת בלחיצה עליה.');
               openSlot(day, free.slot);
             }} style={[styles.smallBtn, { backgroundColor: COLORS.purple }]}>
-              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>+ שיעור</Text>
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>הוסף שיעור</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.viewToggle}>
-          {[{ k: 'week', l: 'שבוע' }, { k: 'day', l: 'יום־יום' }].map(v => (
+          {[{ k: 'week', l: 'שבועי' }, { k: 'day', l: 'יומי' }].map(v => (
             <TouchableOpacity key={v.k} onPress={() => setView(v.k)}
               style={[styles.viewBtn, view === v.k && { backgroundColor: '#fff' }]}>
               <Text style={{ fontSize: 13.5, fontWeight: '600', color: view === v.k ? COLORS.text : '#8B839A' }}>{v.l}</Text>
@@ -253,7 +271,7 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
             {dayLessons.length === 0 && (
               <View style={styles.empty}>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.text }}>אין שיעורים ביום {DAYS[day]}</Text>
-                <Text style={{ fontSize: 13, color: COLORS.textDim, marginTop: 5, textAlign: 'center' }}>לחצי על "+ שיעור" כדי להוסיף</Text>
+                <Text style={{ fontSize: 13, color: COLORS.textDim, marginTop: 5, textAlign: 'center' }}>עליך להוסיף שיעור</Text>
               </View>
             )}
           </>
@@ -330,7 +348,7 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                     <View style={styles.fieldBox}>
                       <Text style={styles.fieldLabel}>כיתה לשיעור הזה</Text>
                       <TextInput value={slot.room} onChangeText={v => setSlot(m => ({ ...m, room: v }))}
-                        placeholder="למשל: 11/3 או מעבדה" placeholderTextColor="#C6BFD2" style={styles.fieldInput} />
+                        placeholder="למשל: מעבדה א' או יא2" placeholderTextColor="#C6BFD2" style={styles.fieldInput} />
                     </View>
                     <View style={styles.fieldBox}>
                       <Text style={styles.fieldLabel}>מורה</Text>
@@ -339,16 +357,10 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                       </Text>
                     </View>
                   </View>
-                  <Text style={{ fontSize: 12, color: COLORS.textFaint, marginTop: 7, textAlign: 'right' }}>
-                    הכיתה נשמרת רק למשבצת הזו · את המורה קובעים במסך המקצועות
-                  </Text>
 
                   <View style={styles.remindRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.text, textAlign: 'right' }}>תזכורת לפני השיעור</Text>
-                      <Text style={{ fontSize: 12, color: COLORS.textDim, marginTop: 2, textAlign: 'right' }}>
-                        בכל יום {DAYS[slot.day]} · {slotSubject?.name}
-                      </Text>
                     </View>
                     <Switch value={slot.remind} onValueChange={v => setSlot(m => ({ ...m, remind: v }))}
                       trackColor={{ true: COLORS.purple, false: '#DFD8E9' }} thumbColor="#fff" />
@@ -405,9 +417,7 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                   <Text style={styles.btnPrimaryText}>סיום</Text>
                 </TouchableOpacity>
               </View>
-              <Text style={{ fontSize: 12.5, color: COLORS.textDim, marginTop: 10, textAlign: 'right' }}>
-                השעות האלה חלות על כל השבוע. שיעור בודד עם שעה חריגה — עורכים ישירות במשבצת שלו.
-              </Text>
+
               <ScrollView style={{ marginTop: 12, maxHeight: 420 }} showsVerticalScrollIndicator={false}>
                 {hours.map((h) => {
                   const s = h.slot;
@@ -438,9 +448,15 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                 })}
                 {hours.length === 0 && (
                   <Text style={{ textAlign: 'center', color: COLORS.textDim, fontSize: 13, marginTop: 10 }}>
-                    אין שעות במערכת — אפשר לשחזר בלחיצה על "ברירת מחדל".
+                    אין שעות במערכת — אפשר לשחזר בלחיצה על "ברירת מחדל" או להוסיף שעה חדשה.
                   </Text>
                 )}
+                <TouchableOpacity onPress={addHour} disabled={hours.length >= MAX_HOURS}
+                  style={[styles.addHourBtn, hours.length >= MAX_HOURS && { opacity: 0.4 }]}>
+                  <Text style={{ color: COLORS.purple, fontSize: 14.5, fontWeight: '700' }}>
+                    {hours.length >= MAX_HOURS ? 'הגעת למקסימום (' + MAX_HOURS + ' שעות)' : '+ הוספת שעה'}
+                  </Text>
+                </TouchableOpacity>
                 <View style={{ height: 20 }} />
               </ScrollView>
             </View>
@@ -495,6 +511,7 @@ const styles = StyleSheet.create({
   pill: { backgroundColor: '#fff', borderWidth: 1.5, borderColor: COLORS.line, borderRadius: 99, paddingVertical: 10, paddingHorizontal: 14, minHeight: 42, justifyContent: 'center' },
   hourRow: { flexDirection: 'row-reverse', gap: 8, alignItems: 'center', backgroundColor: '#fff', borderRadius: 16, padding: 10, marginBottom: 8 },
   hourDeleteBtn: { width: 28, height: 28, borderRadius: 99, backgroundColor: '#F7F5FA', alignItems: 'center', justifyContent: 'center' },
+  addHourBtn: { marginTop: 10, borderWidth: 1.5, borderColor: '#DACFEC', borderStyle: 'dashed', borderRadius: 16, padding: 13, alignItems: 'center' },
   stepper: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: '#F7F5FB', borderRadius: 12, padding: 4, gap: 4, minHeight: 44 },
   stepBtn: { width: 32, height: 32, borderRadius: 99, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
 });

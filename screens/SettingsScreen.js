@@ -49,7 +49,7 @@ export default function SettingsScreen({ onOpenSubjects }) {
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>התראות במכשיר</Text>
-            <Text style={styles.rowSub}>{permGranted ? 'מאושר · עובד גם בלי אינטרנט' : 'לא מאושר — הקישי לאישור'}</Text>
+            <Text style={styles.rowSub}>{permGranted ? 'מאושר' : 'אין הרשאה - התר בהגדרות המכשיר'}</Text>
           </View>
           {permGranted ? (
             <View style={styles.badge}><Text style={{ color: COLORS.green, fontSize: 11, fontWeight: '700' }}>פעיל</Text></View>
@@ -70,7 +70,6 @@ export default function SettingsScreen({ onOpenSubjects }) {
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>תזכורת לפני שיעור</Text>
-            <Text style={styles.rowSub}>רק בשיעורים שסימנת במערכת</Text>
           </View>
           <Switch value={lessonRemind} onValueChange={v => { setLessonRemind(v); setSetting('lessonReminders', v); }}
             trackColor={{ true: COLORS.purple, false: '#DFD8E9' }} thumbColor="#fff" />
@@ -100,12 +99,8 @@ export default function SettingsScreen({ onOpenSubjects }) {
         </View>
       </TouchableOpacity>
 
-      <Text style={styles.sectionLabel}>הנתונים שלי</Text>
+      <Text style={styles.sectionLabel}>הכול נשמר בטלפון שלך</Text>
       <View style={styles.card}>
-        <View style={{ padding: 15 }}>
-          <Text style={styles.rowTitle}>הכול נשמר בטלפון שלך</Text>
-          <Text style={[styles.rowSub, { marginTop: 3, lineHeight: 19 }]}>בלי חשבון, בלי סיסמה ובלי אינטרנט.</Text>
-        </View>
         <View style={styles.divider} />
         <TouchableOpacity onPress={onReset} style={{ padding: 16 }}>
           <Text style={{ color: COLORS.red, fontSize: 15, fontWeight: '600', textAlign: 'right' }}>איפוס הכול</Text>

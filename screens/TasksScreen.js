@@ -261,7 +261,7 @@ export default function TasksScreen({ onOpenSettings }) {
           <View style={styles.empty}>
             <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.text }}>אין כאן משימות</Text>
             <Text style={{ fontSize: 14, color: COLORS.textDim, marginTop: 6, textAlign: 'center', lineHeight: 21 }}>
-              כל מה שצריך להגיש, ללמוד או לזכור — נוסיף בכפתור ה+
+             עליך להוסיף משימות לביצוע
             </Text>
           </View>
         )}

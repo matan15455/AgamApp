@@ -178,7 +178,10 @@ export default function TodayScreen({ onOpenWeek }) {
 
         {todayTasks.length > 0 && (
           <>
+
+          <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 11 }]}>להגיש היום</Text>
+          </View>
             {todayTasks.map(t => (
               <View key={t.id} style={styles.taskMini}>
                 <View style={[styles.letterDot, { backgroundColor: t.subjectColor || '#999', width: 20, height: 20 }]}>
@@ -206,7 +209,7 @@ export default function TodayScreen({ onOpenWeek }) {
           </View>
         ) : (
           <TouchableOpacity onPress={() => setEditingNote(true)} style={styles.noteCard} activeOpacity={0.8}>
-            <Text style={{ fontSize: 14.5, color: '#5C5340', lineHeight: 21, textAlign: 'right' }}>{note || 'הקישי כדי להוסיף הערה ליום'}</Text>
+            <Text style={{ fontSize: 14.5, color: '#5C5340', lineHeight: 21, textAlign: 'right' }}>{note || 'הקש כדי להוסיף הערה ליום'}</Text>
             <Text style={{ fontSize: 11.5, color: '#A79A78', marginTop: 8, textAlign: 'right' }}> לחיצה כדי לערוך</Text>
           </TouchableOpacity>
         )}
