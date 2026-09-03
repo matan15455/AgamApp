@@ -56,7 +56,7 @@ export function dateOfWeekday(wd) {
   return addDays(today, wd - today.getDay());
 }
 
-export function dueInfo(dueDateStr) {
+export function dueInfo(dueDateStr, dueTimeStr) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const [y, m, d] = String(dueDateStr).split('-').map(Number);
@@ -64,12 +64,20 @@ export function dueInfo(dueDateStr) {
   due.setHours(0, 0, 0, 0);
   const diffDays = Math.round((due - today) / 86400000);
   const wd = due.getDay();
+
+  let overdue = diffDays < 0;
+  if (!overdue && diffDays === 0 && dueTimeStr) {
+    const [h, mi] = String(dueTimeStr).split(':').map(Number);
+    const dueMoment = new Date(y, (m || 1) - 1, d || 1, h || 0, mi || 0, 0, 0);
+    overdue = dueMoment.getTime() < Date.now();
+  }
+
   return {
     diffDays,
     dayName: DAYS_ALL[wd],
     dayShort: DAYS_SHORT_ALL[wd],
     dateLabel: fmtDate(due),
-    overdue: diffDays < 0,
+    overdue,
     isToday: diffDays === 0,
     isTomorrow: diffDays === 1,
   };

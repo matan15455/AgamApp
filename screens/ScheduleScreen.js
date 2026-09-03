@@ -70,7 +70,6 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
     const start = toMin(v.startTime), end = toMin(v.endTime);
 
     if (!v.subjectId) return Alert.alert('בחרי מקצוע', 'צריך לבחור איזה מקצוע יש במשבצת הזו.');
-    
     if (end <= start) {
       return Alert.alert('השעות לא הגיוניות', 'שעת הסיום (' + v.endTime + ') חייבת להיות אחרי שעת ההתחלה (' + v.startTime + ').');
     }
@@ -143,20 +142,20 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
           <Text style={{ fontSize: 26, fontWeight: '700', color: COLORS.text }}>מערכת שעות</Text>
           <View style={{ flexDirection: 'row-reverse', gap: 7 }}>
             <TouchableOpacity onPress={() => setHoursModal(true)} style={styles.smallBtn}>
-              <Text style={{ color: '#5F5870', fontSize: 13, fontWeight: '600' }}>הגדר שעות</Text>
+              <Text style={{ color: '#5F5870', fontSize: 13, fontWeight: '600' }}>שעות</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => {
               const free = hours.find(h => !cellAt(day, h.slot));
               if (!free) return Alert.alert('היום מלא', 'כל השעות ביום ' + DAYS[day] + ' תפוסות. אפשר לערוך משבצת קיימת בלחיצה עליה.');
               openSlot(day, free.slot);
             }} style={[styles.smallBtn, { backgroundColor: COLORS.purple }]}>
-              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>הוסף שיעור</Text>
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>+ שיעור</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.viewToggle}>
-          {[{ k: 'week', l: 'שבועי' }, { k: 'day', l: 'יומי' }].map(v => (
+          {[{ k: 'week', l: 'שבוע' }, { k: 'day', l: 'יום־יום' }].map(v => (
             <TouchableOpacity key={v.k} onPress={() => setView(v.k)}
               style={[styles.viewBtn, view === v.k && { backgroundColor: '#fff' }]}>
               <Text style={{ fontSize: 13.5, fontWeight: '600', color: view === v.k ? COLORS.text : '#8B839A' }}>{v.l}</Text>
@@ -254,7 +253,7 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
             {dayLessons.length === 0 && (
               <View style={styles.empty}>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.text }}>אין שיעורים ביום {DAYS[day]}</Text>
-                <Text style={{ fontSize: 13, color: COLORS.textDim, marginTop: 5, textAlign: 'center' }}>עליך להוסיף שיעור</Text>
+                <Text style={{ fontSize: 13, color: COLORS.textDim, marginTop: 5, textAlign: 'center' }}>לחצי על "+ שיעור" כדי להוסיף</Text>
               </View>
             )}
           </>
@@ -281,9 +280,6 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                   </View>
 
                   <Text style={styles.label}>איזה מקצוע?</Text>
-                   <Text style={{ fontSize: 12, color: COLORS.textFaint, marginBottom:10, textAlign: 'right' }}>
-                      את המקצועות מגדירים בהגדרות האפליקציה
-                  </Text>
                   <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
                     {subjects.map(s => {
                       const on = slot.subjectId === s.id;
@@ -315,12 +311,13 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                     <>
                       <DateTimePicker value={timeToDate(picker === 'start' ? slot.startTime : slot.endTime)} mode="time" is24Hour
                         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(e, sel) => {
+                        onValueChange={(event, sel) => {
                           if (Platform.OS === 'android') setPicker(null);
-                          if (e.type === 'dismissed' || !sel) return;
+                          if (!sel) return;
                           const t = dateToTime(sel);
                           setSlot(m => picker === 'start' ? { ...m, startTime: t } : { ...m, endTime: t });
-                        }} />
+                        }}
+                        onDismiss={() => setPicker(null)} />
                       {Platform.OS === 'ios' && (
                         <TouchableOpacity onPress={() => setPicker(null)} style={{ alignSelf: 'center', paddingVertical: 6 }}>
                           <Text style={{ color: COLORS.purple, fontWeight: '700' }}>אישור</Text>
@@ -331,9 +328,9 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
 
                   <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 10 }}>
                     <View style={styles.fieldBox}>
-                      <Text style={styles.fieldLabel}>כיתה</Text>
+                      <Text style={styles.fieldLabel}>כיתה לשיעור הזה</Text>
                       <TextInput value={slot.room} onChangeText={v => setSlot(m => ({ ...m, room: v }))}
-                        placeholder="למשל: יא2 או מעבדה" placeholderTextColor="#C6BFD2" style={styles.fieldInput} />
+                        placeholder="למשל: 11/3 או מעבדה" placeholderTextColor="#C6BFD2" style={styles.fieldInput} />
                     </View>
                     <View style={styles.fieldBox}>
                       <Text style={styles.fieldLabel}>מורה</Text>
@@ -342,11 +339,16 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                       </Text>
                     </View>
                   </View>
-          
+                  <Text style={{ fontSize: 12, color: COLORS.textFaint, marginTop: 7, textAlign: 'right' }}>
+                    הכיתה נשמרת רק למשבצת הזו · את המורה קובעים במסך המקצועות
+                  </Text>
 
                   <View style={styles.remindRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 15, fontWeight: '600', color: COLORS.text, textAlign: 'right' }}>תזכורת לפני השיעור</Text>
+                      <Text style={{ fontSize: 12, color: COLORS.textDim, marginTop: 2, textAlign: 'right' }}>
+                        בכל יום {DAYS[slot.day]} · {slotSubject?.name}
+                      </Text>
                     </View>
                     <Switch value={slot.remind} onValueChange={v => setSlot(m => ({ ...m, remind: v }))}
                       trackColor={{ true: COLORS.purple, false: '#DFD8E9' }} thumbColor="#fff" />
@@ -403,7 +405,9 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                   <Text style={styles.btnPrimaryText}>סיום</Text>
                 </TouchableOpacity>
               </View>
-             
+              <Text style={{ fontSize: 12.5, color: COLORS.textDim, marginTop: 10, textAlign: 'right' }}>
+                השעות האלה חלות על כל השבוע. שיעור בודד עם שעה חריגה — עורכים ישירות במשבצת שלו.
+              </Text>
               <ScrollView style={{ marginTop: 12, maxHeight: 420 }} showsVerticalScrollIndicator={false}>
                 {hours.map((h) => {
                   const s = h.slot;

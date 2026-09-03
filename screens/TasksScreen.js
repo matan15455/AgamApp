@@ -76,8 +76,8 @@ export default function TasksScreen({ onOpenSettings }) {
   });
 
   const groups = [
-    { key: 'late', label: 'באיחור', test: t => !t.done && dueInfo(t.dueDate).diffDays < 0 },
-    { key: 'today', label: 'להיום', test: t => !t.done && dueInfo(t.dueDate).diffDays === 0 },
+    { key: 'late', label: 'באיחור', test: t => !t.done && dueInfo(t.dueDate, t.dueTime).overdue },
+    { key: 'today', label: 'להיום', test: t => !t.done && !dueInfo(t.dueDate, t.dueTime).overdue && dueInfo(t.dueDate).diffDays === 0 },
     { key: 'tomorrow', label: 'למחר', test: t => !t.done && dueInfo(t.dueDate).diffDays === 1 },
     { key: 'week', label: 'בהמשך השבוע', test: t => !t.done && dueInfo(t.dueDate).diffDays > 1 },
     { key: 'done', label: 'בוצעו', test: t => !!t.done },
@@ -208,7 +208,7 @@ export default function TasksScreen({ onOpenSettings }) {
             </View>
             {g.items.map(t => {
               const s = subjById(t.subjectId);
-              const di = dueInfo(t.dueDate);
+              const di = dueInfo(t.dueDate, t.dueTime);
               const tone = t.done ? '#F4F2F7' : di.overdue ? COLORS.redTint : di.isToday ? COLORS.purpleTint : '#F7F5FB';
               const toneFg = t.done ? '#A79FB4' : di.overdue ? COLORS.red : di.isToday ? COLORS.purple : '#6E6580';
               const ts = TYPE_STYLES[t.type] || TYPE_STYLES['תזכורת'];
@@ -234,7 +234,7 @@ export default function TasksScreen({ onOpenSettings }) {
                         <Text style={{ fontSize: 10.5, fontWeight: '700', color: t.done ? '#A79FB4' : ts.fg }}>{t.type}</Text>
                       </View>
                       <Text style={{ fontSize: 12, color: di.overdue && !t.done ? COLORS.red : COLORS.textDim }}>
-                        {t.done ? 'בוצע' : di.overdue ? 'עבר · ' + (di.diffDays === -1 ? 'אתמול' : 'יום ' + di.dayName)
+                        {t.done ? 'בוצע' : di.overdue ? 'עבר · ' + (di.diffDays === 0 ? 'היום, ' + (t.dueTime || '18:00') : di.diffDays === -1 ? 'אתמול' : 'יום ' + di.dayName)
                           : di.isToday ? 'היום, ' + (t.dueTime || '18:00')
                           : di.isTomorrow ? 'מחר, ' + (t.dueTime || '18:00')
                           : 'יום ' + di.dayName + ', ' + (t.dueTime || '18:00')}
@@ -261,7 +261,7 @@ export default function TasksScreen({ onOpenSettings }) {
           <View style={styles.empty}>
             <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.text }}>אין כאן משימות</Text>
             <Text style={{ fontSize: 14, color: COLORS.textDim, marginTop: 6, textAlign: 'center', lineHeight: 21 }}>
-                עליך להוסיף משימות בכפתור הפלוס למטה
+              כל מה שצריך להגיש, ללמוד או לזכור — נוסיף בכפתור ה+
             </Text>
           </View>
         )}
@@ -354,9 +354,9 @@ export default function TasksScreen({ onOpenSettings }) {
                   <DateTimePicker value={new Date(draft.dueDate + 'T12:00:00')} mode="date"
                     display={Platform.OS === 'ios' ? 'inline' : 'default'}
                     minimumDate={new Date(new Date().setHours(0, 0, 0, 0))}
-                    onChange={(e, sel) => {
+                    onValueChange={(event, sel) => {
                       if (Platform.OS === 'android') setPicker(null);
-                      if (e.type === 'dismissed' || !sel) return;
+                      if (!sel) return;
                       const iso = isoDate(sel);
                       // if the new date is today and the currently-set time already passed, bump the time forward
                       let nextTime = draft.dueTime;
@@ -368,21 +368,23 @@ export default function TasksScreen({ onOpenSettings }) {
                         }
                       }
                       setDraft(d => ({ ...d, dueDate: iso, dueTime: nextTime }));
-                    }} />
+                    }}
+                    onDismiss={() => setPicker(null)} />
                 )}
                 {picker === 'time' && (
                   <DateTimePicker value={timeToDate(draft.dueTime)} mode="time" is24Hour
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(e, sel) => {
+                    onValueChange={(event, sel) => {
                       if (Platform.OS === 'android') setPicker(null);
-                      if (e.type === 'dismissed' || !sel) return;
+                      if (!sel) return;
                       const t = dateToTime(sel);
                       const candidate = new Date(draft.dueDate + 'T' + t + ':00');
                       if (candidate.getTime() < Date.now() - 30000) {
                         return Alert.alert('השעה כבר עברה', 'אי אפשר לבחור שעה שכבר עברה היום.');
                       }
                       setDraft(d => ({ ...d, dueTime: t }));
-                    }} />
+                    }}
+                    onDismiss={() => setPicker(null)} />
                 )}
                 {picker && Platform.OS === 'ios' && (
                   <TouchableOpacity onPress={() => setPicker(null)} style={{ alignSelf: 'center', paddingVertical: 8 }}>
@@ -446,11 +448,12 @@ export default function TasksScreen({ onOpenSettings }) {
                     {picker === 'dailyTime' && (
                       <DateTimePicker value={timeToDate(parsed.time)} mode="time" is24Hour
                         display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(e, sel) => {
+                        onValueChange={(event, sel) => {
                           if (Platform.OS === 'android') setPicker(null);
-                          if (e.type === 'dismissed' || !sel) return;
+                          if (!sel) return;
                           setDraft(d => ({ ...d, remindKind: 'daily:' + dateToTime(sel) }));
-                        }} />
+                        }}
+                        onDismiss={() => setPicker(null)} />
                     )}
                     {picker === 'dailyTime' && Platform.OS === 'ios' && (
                       <TouchableOpacity onPress={() => setPicker(null)} style={{ alignSelf: 'center', paddingVertical: 8 }}>

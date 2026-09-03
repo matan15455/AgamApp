@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet, LogBox } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { initDB, getSetting } from './database';
 import { requestPermissions } from './notifications';
 import { COLORS } from './theme';
@@ -11,6 +12,10 @@ import SettingsScreen from './screens/SettingsScreen';
 import SubjectsScreen from './screens/SubjectsScreen';
 import { TimerProvider, useTimer } from './TimerContext';
 
+// AgamApp only schedules local reminders — it never uses push tokens or remote
+// notifications — so this Expo Go warning (SDK 53+) is harmless noise here.
+LogBox.ignoreLogs(['was removed from Expo Go']);
+
 const TABS = [
   { key: 'today', label: 'היום', icon: '◗' },
   { key: 'week', label: 'מערכת', icon: '▦' },
@@ -19,7 +24,11 @@ const TABS = [
 ];
 
 export default function App() {
-  return <Root />;
+  return (
+    <SafeAreaProvider>
+      <Root />
+    </SafeAreaProvider>
+  );
 }
 
 function Root() {
@@ -54,6 +63,11 @@ function Root() {
 }
 
 function Shell({ tab, setTab, scheduleView, setScheduleView, setSubjectsOpen }) {
+  // real device inset (Android nav bar — gesture pill or 3-button bar — and iOS home indicator),
+  // not a guessed constant, so the tab bar never sits under the system navigation
+  const insets = useSafeAreaInsets();
+  const tabBarBottomPadding = 11 + insets.bottom;
+
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       <View style={{ flex: 1 }}>
@@ -65,7 +79,7 @@ function Shell({ tab, setTab, scheduleView, setScheduleView, setSubjectsOpen }) 
         {tab === 'settings' && <SettingsScreen onOpenSubjects={() => setSubjectsOpen(true)} />}
       </View>
 
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { paddingBottom: tabBarBottomPadding }]}>
         {TABS.map(t => {
           const on = tab === t.key;
           return (
@@ -77,17 +91,17 @@ function Shell({ tab, setTab, scheduleView, setScheduleView, setSubjectsOpen }) 
           );
         })}
       </View>
-      <TimerBar visible={tab !== 'today'} onOpen={() => setTab('today')} />
+      <TimerBar visible={tab !== 'today'} onOpen={() => setTab('today')} bottomOffset={68 + tabBarBottomPadding} />
     </View>
   );
 }
 
 // floating strip that shows the study timer while you're on another screen
-function TimerBar({ visible, onOpen }) {
+function TimerBar({ visible, onOpen, bottomOffset }) {
   const timer = useTimer();
   if (!visible || !timer || (!timer.running && timer.progress === 0)) return null;
   return (
-    <TouchableOpacity onPress={onOpen} activeOpacity={0.85} style={styles.timerBar}>
+    <TouchableOpacity onPress={onOpen} activeOpacity={0.85} style={[styles.timerBar, { bottom: bottomOffset }]}>
       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 9 }}>
         <View style={{ width: 8, height: 8, borderRadius: 99, backgroundColor: timer.running ? (timer.phase === 'break' ? COLORS.green : COLORS.purple) : '#C9C1D6' }} />
         <Text style={{ fontSize: 13, fontWeight: '600', color: COLORS.text }}>
@@ -101,7 +115,7 @@ function TimerBar({ visible, onOpen }) {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.bg },
-  timerBar: { position: 'absolute', bottom: 96, left: 16, right: 16, flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', borderRadius: 99, paddingVertical: 11, paddingHorizontal: 16, elevation: 4, shadowColor: '#2A2233', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
-  tabBar: { flexDirection: 'row-reverse', paddingTop: 11, paddingBottom: 28, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: COLORS.border },
+  timerBar: { position: 'absolute', left: 16, right: 16, flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', borderRadius: 99, paddingVertical: 11, paddingHorizontal: 16, elevation: 4, shadowColor: '#2A2233', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+  tabBar: { flexDirection: 'row-reverse', paddingTop: 11, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: COLORS.border },
   tabItem: { flex: 1, alignItems: 'center', minHeight: 52, justifyContent: 'center' },
 });

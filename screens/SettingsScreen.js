@@ -1,9 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Switch, Alert, TextInput } from 'react-native';
-import * as Notifications from 'expo-notifications';
 import { COLORS, TOP, plural } from '../theme';
 import { getSubjects, getSetting, setSetting, wipeAll } from '../database';
-import { requestPermissions } from '../notifications';
+import { requestPermissions, getPermissionGranted } from '../notifications';
 
 export default function SettingsScreen({ onOpenSubjects }) {
   const [subjects, setSubjects] = useState([]);
@@ -17,8 +16,7 @@ export default function SettingsScreen({ onOpenSubjects }) {
     setMorning(await getSetting('morningSummary', true));
     setLessonRemind(await getSetting('lessonReminders', true));
     setName(await getSetting('studentName', ''));
-    const perm = await Notifications.getPermissionsAsync();
-    setPermGranted(perm.status === 'granted');
+    setPermGranted(await getPermissionGranted());
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -51,7 +49,7 @@ export default function SettingsScreen({ onOpenSubjects }) {
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>התראות במכשיר</Text>
-            <Text style={styles.rowSub}>{permGranted ? 'מאושר ' : 'לא מאושר - עליך לאשר בהגדרות המכשיר גישה להתראות'}</Text>
+            <Text style={styles.rowSub}>{permGranted ? 'מאושר · עובד גם בלי אינטרנט' : 'לא מאושר — הקישי לאישור'}</Text>
           </View>
           {permGranted ? (
             <View style={styles.badge}><Text style={{ color: COLORS.green, fontSize: 11, fontWeight: '700' }}>פעיל</Text></View>
@@ -72,6 +70,7 @@ export default function SettingsScreen({ onOpenSubjects }) {
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>תזכורת לפני שיעור</Text>
+            <Text style={styles.rowSub}>רק בשיעורים שסימנת במערכת</Text>
           </View>
           <Switch value={lessonRemind} onValueChange={v => { setLessonRemind(v); setSetting('lessonReminders', v); }}
             trackColor={{ true: COLORS.purple, false: '#DFD8E9' }} thumbColor="#fff" />
@@ -101,8 +100,12 @@ export default function SettingsScreen({ onOpenSubjects }) {
         </View>
       </TouchableOpacity>
 
-      <Text style={styles.sectionLabel}>הנתונים נמשרים בטלפון שלך</Text>
+      <Text style={styles.sectionLabel}>הנתונים שלי</Text>
       <View style={styles.card}>
+        <View style={{ padding: 15 }}>
+          <Text style={styles.rowTitle}>הכול נשמר בטלפון שלך</Text>
+          <Text style={[styles.rowSub, { marginTop: 3, lineHeight: 19 }]}>בלי חשבון, בלי סיסמה ובלי אינטרנט.</Text>
+        </View>
         <View style={styles.divider} />
         <TouchableOpacity onPress={onReset} style={{ padding: 16 }}>
           <Text style={{ color: COLORS.red, fontSize: 15, fontWeight: '600', textAlign: 'right' }}>איפוס הכול</Text>
