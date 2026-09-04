@@ -114,9 +114,6 @@ export default function SubjectsScreen({ onBack }) {
                       <TextInput value={draft.teacher} onChangeText={v => setDraft(d => ({ ...d, teacher: v }))}
                         placeholder="שם המורה" placeholderTextColor="#C6BFD2" style={styles.fieldInput} />
                     </View>
-                    <Text style={{ fontSize: 12, color: COLORS.textFaint, marginTop: 7, textAlign: 'right' }}>
-                      את הכיתה קובעים בכל משבצת במערכת בנפרד — כדי שאפשר לשנות אותה לפי השבוע.
-                    </Text>
                   </View>
 
                   <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 10 }}>

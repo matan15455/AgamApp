@@ -3,9 +3,11 @@ import { COLORS, TOP } from '../theme';
 import { setSetting } from '../database';
 
 const STEPS = [
-  { n: '1', title: 'בונים את המערכת פעם אחת', sub: 'לוחצים על משבצת בטבלה ובוחרים מקצוע' },
-  { n: '2', title: 'מוסיפים משימות בכפתור ה+', sub: 'שיעורי בית, מבחנים והגשות — עם תאריך ושעה' },
-  { n: '3', title: 'מאשרים התראות', sub: 'כדי שהתזכורות יגיעו בזמן, גם בלי אינטרנט' },
+  { n: '1', title: 'מגדירים את המקצועות', sub: 'בהגדרות מגדירים את המקצועות ששאתם לומדים השנה' },
+  { n: '2', title: 'בונים את המערכת פעם אחת', sub: 'לוחצים על משבצת בטבלה ובוחרים מקצוע' },
+  { n: '3', title: 'מוסיפים משימות בכפתור הפלוס', sub: 'שיעורי בית, מבחנים והגשות - עם תאריך ושעה' },
+  { n: '4', title: 'מאשרים התראות', sub: 'כדי שהתזכורות יגיעו בזמן' },
+  { n: '5', title: 'אופציה להתחלת טיימר למידה', sub: 'הגדירו יעד למידה והתחילו את הטיימר' },
 ];
 
 export default function WelcomeScreen({ onDone }) {
@@ -17,9 +19,8 @@ export default function WelcomeScreen({ onDone }) {
   return (
     <View style={{ flex: 1, backgroundColor: '#FBF9FD' }}>
       <View style={{ flex: 1, paddingHorizontal: 26, paddingTop: TOP + 30 }}>
-        <View style={styles.logo} />
-        <Text style={styles.title}>ברוכה הבאה{'\n'}למערכת שלך</Text>
-        <Text style={styles.sub}>מערכת שעות, שיעורי בית ומבחנים — במקום אחד, עם תזכורות שמגיעות בזמן.</Text>
+        <Text style={styles.title}>ברוכים הבאים{'\n'}לשעת אפס</Text>
+        <Text style={styles.sub}>מערכת שעות, שיעורי בית ומבחנים - במקום אחד, עם תזכורות שדואגות שלא תשכח כלום ותגיש הכל בזמן.</Text>
 
         <View style={{ marginTop: 30, gap: 12 }}>
           {STEPS.map(s => (
@@ -36,9 +37,9 @@ export default function WelcomeScreen({ onDone }) {
 
       <View style={{ paddingHorizontal: 22, paddingBottom: 46 }}>
         <TouchableOpacity onPress={start} style={styles.cta}>
-          <Text style={{ color: '#fff', fontSize: 16.5, fontWeight: '700' }}>בואי נתחיל</Text>
+          <Text style={{ color: '#fff', fontSize: 16.5, fontWeight: '700' }}>בואו נתחיל</Text>
         </TouchableOpacity>
-        <Text style={{ textAlign: 'center', fontSize: 12.5, color: '#A79FB4', marginTop: 12 }}>הכול נשמר רק בטלפון הזה · אפשר לתת שם בהגדרות מתי שרוצים</Text>
+        <Text style={{ textAlign: 'center', fontSize: 12.5, color: '#A79FB4', marginTop: 12 }}>הכול נשמר רק בטלפון</Text>
       </View>
     </View>
   );
