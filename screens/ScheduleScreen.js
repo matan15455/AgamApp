@@ -298,6 +298,7 @@ export default function ScheduleScreen({ initialView = 'week', initialDay }) {
                   </View>
 
                   <Text style={styles.label}>איזה מקצוע?</Text>
+                  <Text style={styles.label}>את המקצועות ניתן לערוך ולשנות בהגדרות באפליקציה בתפריט</Text>
                   <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
                     {subjects.map(s => {
                       const on = slot.subjectId === s.id;
