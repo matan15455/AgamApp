@@ -16,7 +16,7 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#F7F4FB",
-        "foregroundImage": "./assets/icon-app.png",
+        "foregroundImage": "./assets/icon-app.png"
       },
       "package": "com.matan15455.agamapp"
     },
